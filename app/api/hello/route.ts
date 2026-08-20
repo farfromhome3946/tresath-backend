@@ -6,3 +6,4 @@ export async function GET() {
     message: "Welcome to the Tresath Backend API!" 
   });
 }
+
