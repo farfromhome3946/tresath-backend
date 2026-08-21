@@ -2,180 +2,93 @@ import { Prisma, LeaveType, Role, Squadron } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const leaveSelect = {
-  id: true,
-  personnelId: true,
-  squadron: true,
-  leaveType: true,
-  status: true,
-  fromDate: true,
-  toDate: true,
-  prefixDate: true,
-  suffixDate: true,
-  reportingDate: true,
-  requestedDays: true,
-  balanceBefore: true,
-  balanceReduction: true,
-  balanceAfter: true,
-  sdmApproved: true,
-  sdmApprovedAt: true,
-  adjtApproved: true,
-  adjtApprovedAt: true,
-  rejectionReason: true,
-  remarks: true,
-  createdAt: true,
-  personnel: { select: { serviceNumber: true, fullName: true, rank: true } },
-} satisfies Prisma.LeaveRequestSelect;
-
-type LeaveInput = {
-  id?: unknown;
-  personnelId?: unknown;
-  serviceNumber?: unknown;
-  squadron?: unknown;
-  leaveType?: unknown;
-  fromDate?: unknown;
-  toDate?: unknown;
-  prefixDate?: unknown;
-  suffixDate?: unknown;
-  reportingDate?: unknown;
-  requestedDays?: unknown;
-  remarks?: unknown;
-  action?: unknown;
-  actorId?: unknown;
-  actorRole?: unknown;
-  rejectionReason?: unknown;
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
 
-function text(value: unknown, field: string, maxLength = 500) {
-  if (typeof value !== "string" || value.trim().length === 0 || value.length > maxLength) throw new Error(`${field} must be a non-empty string of at most ${maxLength} characters.`);
+function json(data: unknown, init?: ResponseInit) {
+  return NextResponse.json(data, { ...init, headers: { ...corsHeaders, ...init?.headers } });
+}
+
+function text(value: unknown, field: string, max = 500) {
+  if (typeof value !== "string" || !value.trim() || value.length > max) throw new Error(`${field} is required.`);
   return value.trim();
 }
 
-function optionalDate(value: unknown, field: string) {
-  if (value === undefined || value === null || value === "") return null;
-  const date = new Date(text(value, field, 30));
-  if (Number.isNaN(date.getTime())) throw new Error(`${field} must be a valid date.`);
-  return date;
+function date(value: unknown, field: string, optional = false) {
+  if (optional && (value === undefined || value === null || value === "")) return null;
+  const parsed = new Date(text(value, field, 40));
+  if (Number.isNaN(parsed.getTime())) throw new Error(`${field} must be a valid date.`);
+  return parsed;
 }
 
-function requiredDate(value: unknown, field: string) {
-  const date = optionalDate(value, field);
-  if (!date) throw new Error(`${field} is required.`);
-  return date;
+function daysBetween(from: Date, to: Date) {
+  return Math.floor((Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()) - Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate())) / 86400000) + 1;
 }
 
-function integer(value: unknown, field: string) {
-  const number = typeof value === "number" ? value : Number(value);
-  if (!Number.isInteger(number) || number < 1 || number > 366) throw new Error(`${field} must be a whole number between 1 and 366.`);
-  return number;
+function serialize(request: Awaited<ReturnType<typeof prisma.leaveRequest.findMany>>[number] & { personnel?: { serviceNumber: string; fullName: string; rank: string } }) {
+  return { ...request, armyNo: request.personnel?.serviceNumber, name: request.personnel?.fullName.replace(/(\w)\w+/g, "$1••••"), rank: request.personnel?.rank, type: request.leaveType, from: request.fromDate.toISOString().slice(0, 10), to: request.toDate.toISOString().slice(0, 10), prefix: request.prefixDate?.toISOString().slice(0, 10) ?? "None", suffix: request.suffixDate?.toISOString().slice(0, 10) ?? "None", reportingDate: request.reportingDate.toISOString().slice(0, 10), status: request.status === "REJECTED" ? "Rejected" : request.status === "APPROVED" || request.status === "SDM_APPROVED" || request.status === "ADJT_APPROVED" ? "Approved" : "Pending" };
 }
 
-function objectId(value: unknown, field: string) {
-  const candidate = text(value, field, 24);
-  if (!/^[a-f\d]{24}$/i.test(candidate)) throw new Error(`${field} must be a valid MongoDB ObjectId.`);
-  return candidate;
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }
 
-function inclusiveDays(from: Date, to: Date) {
-  const milliseconds = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()) - Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
-  return Math.floor(milliseconds / 86400000) + 1;
-}
-
-function serialize(item: Prisma.LeaveRequestGetPayload<{ select: typeof leaveSelect }>) {
-  return {
-    id: item.id,
-    armyNo: item.personnel.serviceNumber,
-    name: item.personnel.fullName.replace(/(\w)\w+/g, "$1••••"),
-    rank: item.personnel.rank,
-    squadron: item.squadron[0] + item.squadron.slice(1).toLowerCase(),
-    type: item.leaveType,
-    status: item.status === "APPROVED" || item.status === "SDM_APPROVED" || item.status === "ADJT_APPROVED" ? "Approved" : item.status === "REJECTED" ? "Rejected" : "Pending",
-    from: item.fromDate.toISOString().slice(0, 10),
-    to: item.toDate.toISOString().slice(0, 10),
-    prefix: item.prefixDate?.toISOString().slice(0, 10) ?? "None",
-    suffix: item.suffixDate?.toISOString().slice(0, 10) ?? "None",
-    reportingDate: item.reportingDate.toISOString().slice(0, 10),
-    requestedDays: item.requestedDays,
-    sdmApproved: item.sdmApproved,
-    adjtApproved: item.adjtApproved,
-    balanceBefore: item.balanceBefore,
-    balanceAfter: item.balanceAfter,
-  };
-}
+const withPersonnel = { personnel: { select: { serviceNumber: true, fullName: true, rank: true } } } satisfies Prisma.LeaveRequestInclude;
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const personnelId = url.searchParams.get("personnelId") ?? undefined;
     const serviceNumber = url.searchParams.get("serviceNumber")?.trim().toUpperCase();
     const squadron = url.searchParams.get("squadron")?.toUpperCase() as Squadron | undefined;
-    const where: Prisma.LeaveRequestWhereInput = {
-      ...(personnelId ? { personnelId } : {}),
-      ...(serviceNumber ? { personnel: { serviceNumber } } : {}),
-      ...(squadron && Object.values(Squadron).includes(squadron) ? { squadron } : {}),
-    };
-    const leave = await prisma.leaveRequest.findMany({ where, select: leaveSelect, orderBy: { createdAt: "desc" } });
-    return NextResponse.json({ leave: leave.map(serialize) });
+    const leave = await prisma.leaveRequest.findMany({ where: { ...(serviceNumber ? { personnel: { serviceNumber } } : {}), ...(squadron && Object.values(Squadron).includes(squadron) ? { squadron } : {}) }, include: withPersonnel, orderBy: { createdAt: "desc" } });
+    return json({ leave: leave.map(serialize) });
   } catch (error) {
     console.error("GET /api/leave failed", error);
-    return NextResponse.json({ error: "Unable to load leave records." }, { status: 500 });
+    return json({ error: "Unable to load leave records." }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as LeaveInput;
+    const body = await request.json() as Record<string, unknown>;
     const leaveType = body.leaveType === "AL" || body.leaveType === "CL" ? body.leaveType as LeaveType : (() => { throw new Error("leaveType must be AL or CL."); })();
-    const fromDate = requiredDate(body.fromDate, "fromDate");
-    const toDate = requiredDate(body.toDate, "toDate");
-    const reportingDate = requiredDate(body.reportingDate, "reportingDate");
-    const prefixDate = optionalDate(body.prefixDate, "prefixDate");
-    const suffixDate = optionalDate(body.suffixDate, "suffixDate");
-    if (toDate < fromDate) throw new Error("toDate cannot be before fromDate.");
-    if (reportingDate < toDate) throw new Error("reportingDate cannot be before toDate.");
-    const calculatedDays = inclusiveDays(fromDate, toDate);
-    const requestedDays = body.requestedDays === undefined ? calculatedDays : integer(body.requestedDays, "requestedDays");
-    if (requestedDays !== calculatedDays) throw new Error("requestedDays must match the inclusive date range.");
-    const personnel = body.personnelId ? await prisma.personnel.findUnique({ where: { id: text(body.personnelId, "personnelId", 40) } }) : await prisma.personnel.findUnique({ where: { serviceNumber: text(body.serviceNumber, "serviceNumber", 40).toUpperCase() } });
-    if (!personnel || !personnel.isActive) return NextResponse.json({ error: "Active personnel record not found." }, { status: 404 });
+    const fromDate = date(body.fromDate, "fromDate")!; const toDate = date(body.toDate, "toDate")!; const reportingDate = date(body.reportingDate, "reportingDate")!;
+    const prefixDate = date(body.prefixDate, "prefixDate", true); const suffixDate = date(body.suffixDate, "suffixDate", true);
+    if (toDate < fromDate || reportingDate < toDate) throw new Error("Leave dates are inconsistent.");
+    const requestedDays = Number(body.requestedDays); const calculatedDays = daysBetween(fromDate, toDate);
+    if (!Number.isInteger(requestedDays) || requestedDays !== calculatedDays) throw new Error("requestedDays must match the inclusive date range.");
+    const personnel = await prisma.personnel.findUnique({ where: { serviceNumber: text(body.serviceNumber, "serviceNumber", 40).toUpperCase() } });
+    if (!personnel || !personnel.isActive) return json({ error: "Active personnel record not found." }, { status: 404 });
     const balanceBefore = leaveType === "AL" ? personnel.annualLeaveBalance : personnel.casualLeaveBalance;
-    if (balanceBefore < requestedDays) return NextResponse.json({ error: `Insufficient ${leaveType} balance.` }, { status: 409 });
+    if (requestedDays > balanceBefore) return json({ error: `Insufficient ${leaveType} balance.` }, { status: 409 });
     const balanceAfter = balanceBefore - requestedDays;
-    const created = await prisma.$transaction(async (tx) => {
-      const update = leaveType === "AL" ? { annualLeaveBalance: balanceAfter } : { casualLeaveBalance: balanceAfter };
-      await tx.personnel.update({ where: { id: personnel.id }, data: update });
-      return tx.leaveRequest.create({ data: { personnelId: personnel.id, squadron: personnel.squadron, leaveType, fromDate, toDate, prefixDate, suffixDate, reportingDate, requestedDays, balanceBefore, balanceReduction: requestedDays, balanceAfter, remarks: body.remarks === undefined ? undefined : text(body.remarks, "remarks") }, select: leaveSelect });
+    const leave = await prisma.$transaction(async (tx) => {
+      await tx.personnel.update({ where: { id: personnel.id }, data: leaveType === "AL" ? { annualLeaveBalance: balanceAfter } : { casualLeaveBalance: balanceAfter } });
+      return tx.leaveRequest.create({ data: { personnelId: personnel.id, squadron: personnel.squadron, leaveType, fromDate, toDate, prefixDate, suffixDate, reportingDate, requestedDays, balanceBefore, balanceReduction: requestedDays, balanceAfter }, include: withPersonnel });
     });
-    return NextResponse.json({ leave: serialize(created) }, { status: 201 });
+    return json({ leave: serialize(leave) }, { status: 201 });
   } catch (error) {
-    if (error instanceof SyntaxError) return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
-    if (error instanceof Error && !(error instanceof Prisma.PrismaClientKnownRequestError)) return NextResponse.json({ error: error.message }, { status: 400 });
-    console.error("POST /api/leave failed", error);
-    return NextResponse.json({ error: "Unable to create leave request." }, { status: 500 });
+    if (error instanceof SyntaxError) return json({ error: "Request body must be valid JSON." }, { status: 400 });
+    if (error instanceof Error) return json({ error: error.message }, { status: 400 });
+    return json({ error: "Unable to create leave request." }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json() as LeaveInput;
-    const id = objectId(body.id, "id");
-    const action = body.action === "approve" || body.action === "reject" ? body.action : (() => { throw new Error("action must be approve or reject."); })();
+    const body = await request.json() as Record<string, unknown>;
+    const id = text(body.id, "id", 40); const action = body.action === "approve" || body.action === "reject" ? body.action : (() => { throw new Error("action must be approve or reject."); })();
     const actorRole = body.actorRole === "SDM" || body.actorRole === "ADJT" ? body.actorRole as Role : (() => { throw new Error("actorRole must be SDM or ADJT."); })();
-    const leave = await prisma.leaveRequest.findUnique({ where: { id }, select: leaveSelect });
-    if (!leave) return NextResponse.json({ error: "Leave request not found." }, { status: 404 });
-    if (leave.status === "REJECTED" || leave.status === "CANCELLED" || leave.status === "APPROVED") return NextResponse.json({ error: "This leave request is already closed." }, { status: 409 });
-    if (actorRole === "SDM" && leave.sdmApproved) return NextResponse.json({ error: "SDM has already decided this request." }, { status: 409 });
-    if (actorRole === "ADJT" && leave.adjtApproved) return NextResponse.json({ error: "ADJT has already decided this request." }, { status: 409 });
-    const now = new Date();
-    const approved = action === "approve";
-    const reviewerId = body.actorId ? objectId(body.actorId, "actorId") : undefined;
-    const data: Prisma.LeaveRequestUpdateInput = actorRole === "SDM" ? { sdmApproved: approved, sdmApprovedAt: approved ? now : null, sdmApprovedById: reviewerId, status: approved ? (leave.adjtApproved ? "APPROVED" : "SDM_APPROVED") : "REJECTED", rejectionReason: approved ? null : body.rejectionReason ? text(body.rejectionReason, "rejectionReason") : "Rejected by SDM" } : { adjtApproved: approved, adjtApprovedAt: approved ? now : null, adjtApprovedById: reviewerId, status: approved ? (leave.sdmApproved ? "APPROVED" : "ADJT_APPROVED") : "REJECTED", rejectionReason: approved ? null : body.rejectionReason ? text(body.rejectionReason, "rejectionReason") : "Rejected by ADJT" };
-    const updated = await prisma.leaveRequest.update({ where: { id }, data, select: leaveSelect });
-    return NextResponse.json({ leave: serialize(updated) });
+    const current = await prisma.leaveRequest.findUnique({ where: { id } }); if (!current) return json({ error: "Leave request not found." }, { status: 404 });
+    const approved = action === "approve"; const status = !approved ? "REJECTED" : actorRole === "SDM" ? current.adjtApproved ? "APPROVED" : "SDM_APPROVED" : current.sdmApproved ? "APPROVED" : "ADJT_APPROVED";
+    const leave = await prisma.leaveRequest.update({ where: { id }, data: actorRole === "SDM" ? { sdmApproved: approved, sdmApprovedAt: approved ? new Date() : null, status } : { adjtApproved: approved, adjtApprovedAt: approved ? new Date() : null, status }, include: withPersonnel });
+    return json({ leave: serialize(leave) });
   } catch (error) {
-    if (error instanceof SyntaxError) return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
-    if (error instanceof Error && !(error instanceof Prisma.PrismaClientKnownRequestError)) return NextResponse.json({ error: error.message }, { status: 400 });
-    console.error("PATCH /api/leave failed", error);
-    return NextResponse.json({ error: "Unable to update leave request." }, { status: 500 });
+    if (error instanceof SyntaxError) return json({ error: "Request body must be valid JSON." }, { status: 400 });
+    if (error instanceof Error) return json({ error: error.message }, { status: 400 });
+    return json({ error: "Unable to update leave request." }, { status: 500 });
   }
 }
