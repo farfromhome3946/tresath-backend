@@ -1,15 +1,129 @@
 datasource db {
   provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// Your MongoDB data table structure
-model User {
-  id    String @id @default(auto()) @map("_id") @db.ObjectId
-  email String @unique
-  name  String?
+enum Role {
+  PERSONNEL
+  SDM
+  ADJT
 }
 
+enum Squadron {
+  AGNI
+  BHARAT
+  CHARDIKALA
+  JHANGI
+}
+
+enum LeaveType {
+  AL
+  CL
+}
+
+enum LeaveStatus {
+  PENDING
+  SDM_APPROVED
+  ADJT_APPROVED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AuditAction {
+  PROFILE_CREATED
+  PROFILE_UPDATED
+  PROFILE_DEACTIVATED
+}
+
+model Personnel {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  serviceNumber String   @unique
+  passwordHash  String
+  fullName      String
+  rank          String
+  trade         String
+  hometown      String
+  squadron      Squadron
+  role          Role     @default(PERSONNEL)
+  isActive      Boolean  @default(true)
+
+  // Store only masked representations of sensitive identity data.
+  maskedEmail   String?
+  maskedPhone   String?
+  maskedAddress String?
+  maskedId      String?
+
+  // Extensible unit-specific attributes and profile metadata.
+  metadata Json?
+
+  annualLeaveBalance Float    @default(60)
+  casualLeaveBalance Float    @default(30)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  leaveRequests LeaveRequest[]
+  auditLogs     AuditLog[]
+
+  @@index([squadron])
+  @@index([role])
+  @@index([isActive])
+}
+
+model LeaveRequest {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  personnelId String      @db.ObjectId
+  personnel   Personnel   @relation(fields: [personnelId], references: [id])
+  squadron    Squadron
+  leaveType   LeaveType
+  status      LeaveStatus @default(PENDING)
+
+  fromDate      DateTime
+  toDate        DateTime
+  prefixDate    DateTime?
+  suffixDate    DateTime?
+  reportingDate DateTime
+  requestedDays Int
+
+  // Snapshot balances make each deduction auditable even after later changes.
+  balanceBefore    Float
+  balanceReduction Float
+  balanceAfter     Float
+
+  sdmApproved      Boolean   @default(false)
+  sdmApprovedAt    DateTime?
+  sdmApprovedById  String?   @db.ObjectId
+  adjtApproved     Boolean   @default(false)
+  adjtApprovedAt   DateTime?
+  adjtApprovedById String?   @db.ObjectId
+  rejectionReason  String?
+  remarks          String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([personnelId])
+  @@index([squadron, status])
+  @@index([reportingDate])
+}
+
+model AuditLog {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  personnelId    String      @db.ObjectId
+  personnel      Personnel   @relation(fields: [personnelId], references: [id])
+  action         AuditAction
+  changedFields  Json?
+  previousValues Json?
+  newValues      Json?
+  actorId        String?
+  actorRole      Role?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime    @default(now())
+
+  @@index([personnelId, createdAt])
+  @@index([action, createdAt])
+}
