@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { promisify } from "node:util";
 import { Prisma, Role, Squadron } from "@prisma/client";
