@@ -4,33 +4,33 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const records = [
-  ["IC-80970N", "MAJ", "Manoj Kumar Tiwari", "Officer"],
-  ["IC-81498H", "MAJ", "Aman Dhaka", "Officer"],
-  ["SS-50034H", "CAPT", "Ajeet Singh Bhinder", "Officer"],
-  ["IC-89263L", "CAPT", "Upasak Singh", "Officer"],
-  ["JC-249073N", "RIS", "Surjit Singh", "DVR"],
-  ["JC-250016L", "RIS", "Rajinder Singh", "DVR"],
-  ["JC-251137Y", "RIS", "Rajinder Pal Singh", "DVR"],
-  ["JC-251087Y", "RIS", "Yadwinder Singh", "GNR"],
-  ["JC-251158P", "RIS", "Gurjit Singh", "GNR"],
-  ["JC-251159X", "NB RIS", "Kulwinder Singh", "OPR"],
-  ["JC-251423A", "NB RIS", "Jugraj Singh", "GNR"],
-  ["JC-251813H", "NB RIS", "Jaswinder Singh", "DVR"],
-  ["JC-252338K", "NB RIS", "Navjeet Singh", "DVR"],
-  ["JC-252526L", "NB RIS", "Harmail Singh", "OPR"],
-  ["15487237L", "DFR", "Ravinder Singh", "DVR"],
-  ["15488576X", "DFR", "Sukhwinder Singh", "DVR"],
-  ["15489728A", "SDM", "Jernel Singh", "DVR"],
-  ["15492433P", "SQMD", "Amarjit Singh", "DVR"],
-  ["15492827N", "DFR", "Balvinder Singh", "GNR"],
-  ["15494378H", "DFR", "Kamaldeep Singh", "GNR"],
-  ["15499896M", "DFR", "Gurjit Singh", "OPR"],
-  ["15504368P", "DFR", "Jatinder Singh", "OPR"],
-  ["15505290F", "DFR", "Ramandeep Singh", "GNR"],
-  ["15505438P", "DFR", "Ranjit Singh", "OPR"],
-  ["15506437Y", "DFR", "Gajjan Singh", "GNR"],
-  ["15509741N", "DFR", "Vijender Singh", "DVR"],
-  ["15509770H", "DFR", "Farminder Singh", "DVR"],
+  ["TEST-CH-001", "Lt", "Aarav Mehta", "DVR"],
+  ["TEST-CH-002", "Lt", "Ishaan Kapoor", "OPR"],
+  ["TEST-CH-003", "Capt", "Kabir Malhotra", "GNR"],
+  ["TEST-CH-004", "Capt", "Rohan Bedi", "DVR"],
+  ["TEST-CH-005", "Ris", "Aditya Rao", "OPR"],
+  ["TEST-CH-006", "Ris", "Vivaan Sethi", "GNR"],
+  ["TEST-CH-007", "Ris", "Arjun Nair", "DVR"],
+  ["TEST-CH-008", "Ris", "Dev Khanna", "OPR"],
+  ["TEST-CH-009", "Nb Ris", "Neil Verma", "GNR"],
+  ["TEST-CH-010", "Nb Ris", "Yuvan Arora", "DVR"],
+  ["TEST-CH-011", "Nb Ris", "Karan Joshi", "OPR"],
+  ["TEST-CH-012", "Nb Ris", "Manav Gill", "GNR"],
+  ["TEST-CH-013", "Dfr", "Ayaan Bose", "DVR"],
+  ["TEST-CH-014", "Dfr", "Dhruv Anand", "OPR"],
+  ["TEST-CH-015", "Dfr", "Reyansh Jain", "GNR"],
+  ["TEST-CH-016", "Dfr", "Samar Oberoi", "DVR"],
+  ["TEST-CH-017", "Dfr", "Veer Chawla", "OPR"],
+  ["TEST-CH-018", "Dfr", "Rudra Iyer", "GNR"],
+  ["TEST-CH-019", "Dfr", "Atharv Menon", "DVR"],
+  ["TEST-CH-020", "Dfr", "Harsh Vora", "OPR"],
+  ["TEST-CH-021", "Dfr", "Anay Chopra", "GNR"],
+  ["TEST-CH-022", "Dfr", "Shivam Das", "DVR"],
+  ["TEST-CH-023", "Dfr", "Krish Puri", "OPR"],
+  ["TEST-CH-024", "Dfr", "Moksh Talwar", "GNR"],
+  ["TEST-CH-025", "Dfr", "Parth Sood", "DVR"],
+  ["TEST-CH-026", "Dfr", "Laksh Vyas", "OPR"],
+  ["TEST-CH-027", "Dfr", "Vihaan Shah", "GNR"],
 ];
 
 function passwordHash(fullName) {
@@ -40,13 +40,50 @@ function passwordHash(fullName) {
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
 }
 
+const oldPersonnel = await prisma.personnel.findMany({ where: { squadron: "CHARDIKALA" }, select: { id: true } });
+const oldIds = oldPersonnel.map(({ id }) => id);
+if (oldIds.length) {
+  await prisma.leaveRequest.deleteMany({ where: { personnelId: { in: oldIds } } });
+  await prisma.auditLog.deleteMany({ where: { personnelId: { in: oldIds } } });
+  await prisma.personnel.deleteMany({ where: { id: { in: oldIds } } });
+}
+
+const created = [];
 for (const [serviceNumber, rank, fullName, trade] of records) {
-  await prisma.personnel.upsert({
-    where: { serviceNumber },
-    update: { fullName, rank, trade, squadron: "CHARDIKALA", role: "PERSONNEL", isActive: true },
-    create: { serviceNumber, fullName, rank, trade, hometown: "Not provided", squadron: "CHARDIKALA", role: "PERSONNEL", passwordHash: passwordHash(fullName) },
+  const personnel = await prisma.personnel.create({
+    data: { serviceNumber, fullName, rank, trade, hometown: "Test City", squadron: "CHARDIKALA", role: "PERSONNEL", passwordHash: passwordHash(fullName) },
+  });
+  created.push(personnel);
+}
+
+const today = new Date();
+for (const personnel of created.slice(0, 9)) {
+  const fromDate = new Date(today);
+  fromDate.setDate(fromDate.getDate() - 2);
+  const toDate = new Date(today);
+  toDate.setDate(toDate.getDate() + 3);
+  const reportingDate = new Date(today);
+  reportingDate.setDate(reportingDate.getDate() + 4);
+  await prisma.leaveRequest.create({
+    data: {
+      personnelId: personnel.id,
+      squadron: "CHARDIKALA",
+      leaveType: "AL",
+      status: "APPROVED",
+      fromDate,
+      toDate,
+      reportingDate,
+      requestedDays: 6,
+      balanceBefore: 60,
+      balanceReduction: 6,
+      balanceAfter: 54,
+      sdmApproved: true,
+      adjtApproved: true,
+      sdmApprovedAt: today,
+      adjtApprovedAt: today,
+    },
   });
 }
 
-console.log(`Imported ${records.length} Chardikala personnel records.`);
+console.log(`Replaced ${oldIds.length} old Chardikala records with ${records.length} synthetic records; 9 are on leave.`);
 await prisma.$disconnect();
