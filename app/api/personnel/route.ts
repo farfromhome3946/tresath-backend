@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         fullName: text(body.fullName, "fullName"),
         rank: text(body.rank ?? "Personnel", "rank"),
         trade: text(body.trade ?? "General Duty", "trade"),
-        hometown: text(body.hometown ?? "Not provided", "hometown"),
+        hometown: text(body.hometown || "Not provided", "hometown"),
         role,
         squadron,
         maskedEmail: typeof body.maskedEmail === "string" ? body.maskedEmail : undefined,
