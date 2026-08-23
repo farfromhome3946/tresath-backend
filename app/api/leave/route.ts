@@ -69,9 +69,10 @@ export async function POST(request: Request) {
 		const balanceBefore = leaveType === "AL" ? personnel.annualLeaveBalance : personnel.casualLeaveBalance;
 		if (requestedDays > balanceBefore) return json({ error: `Insufficient ${leaveType} balance.` }, { status: 409 });
 		const balanceAfter = balanceBefore - requestedDays;
+		const availed = body.recordType === "AVAILED";
 		const leave = await prisma.$transaction(async (tx) => {
 			await tx.personnel.update({ where: { id: personnel.id }, data: leaveType === "AL" ? { annualLeaveBalance: balanceAfter } : { casualLeaveBalance: balanceAfter } });
-			return tx.leaveRequest.create({ data: { personnelId: personnel.id, squadron: personnel.squadron, leaveType, fromDate, toDate, prefixDate, suffixDate, reportingDate, requestedDays, balanceBefore, balanceReduction: requestedDays, balanceAfter }, include: withPersonnel });
+			return tx.leaveRequest.create({ data: { personnelId: personnel.id, squadron: personnel.squadron, leaveType, status: availed ? "APPROVED" : "PENDING", fromDate, toDate, prefixDate, suffixDate, reportingDate, requestedDays, balanceBefore, balanceReduction: requestedDays, balanceAfter }, include: withPersonnel });
 		});
 		return json({ leave: serialize(leave) }, { status: 201 });
 	} catch (error) {

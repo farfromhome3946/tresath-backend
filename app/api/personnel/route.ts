@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 const scrypt = promisify(scryptCallback);
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -108,5 +108,31 @@ export async function POST(request: Request) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return json({ error: "That Army No. already has a profile." }, { status: 409 });
     if (error instanceof Error) return json({ error: error.message }, { status: 400 });
     return json({ error: "Unable to save personnel." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    const serviceNumber = text(body.serviceNumber, "serviceNumber", 40).toUpperCase();
+    const current = await prisma.personnel.findUnique({ where: { serviceNumber } });
+    if (!current || !current.isActive) return json({ error: "Active personnel record not found." }, { status: 404 });
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata as Prisma.InputJsonValue : current.metadata;
+    const personnel = await prisma.personnel.update({
+      where: { serviceNumber },
+      data: {
+        fullName: body.fullName === undefined ? undefined : text(body.fullName, "fullName"),
+        rank: body.rank === undefined ? undefined : text(body.rank, "rank"),
+        trade: body.trade === undefined ? undefined : text(body.trade, "trade"),
+        hometown: body.hometown === undefined ? undefined : text(body.hometown, "hometown"),
+        metadata,
+      },
+    });
+    await prisma.auditLog.create({ data: { personnelId: personnel.id, action: "PROFILE_UPDATED", changedFields: { fullName: body.fullName !== undefined, rank: body.rank !== undefined, trade: body.trade !== undefined, hometown: body.hometown !== undefined, metadata: body.metadata !== undefined }, actorId: personnel.id, actorRole: personnel.role } });
+    return json({ account: publicAccount(personnel) });
+  } catch (error) {
+    if (error instanceof SyntaxError) return json({ error: "Request body must be valid JSON." }, { status: 400 });
+    if (error instanceof Error) return json({ error: error.message }, { status: 400 });
+    return json({ error: "Unable to update personnel." }, { status: 500 });
   }
 }
