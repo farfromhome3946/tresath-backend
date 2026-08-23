@@ -24,3 +24,9 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+main > div > section:first-child {
+  background-image: linear-gradient(rgba(16, 44, 37, 0.78), rgba(16, 44, 37, 0.9)), url("/ghost-regiment.jpg");
+  background-position: center;
+  background-size: cover;
+}
