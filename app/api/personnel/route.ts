@@ -38,7 +38,7 @@ async function hashPassword(password: string) {
 function publicAccount(personnel: Awaited<ReturnType<typeof prisma.personnel.create>>) {
   const { passwordHash, ...safe } = personnel;
   void passwordHash;
-  return { ...safe, maskedName: personnel.fullName.replace(/(\w)\w+/g, "$1••••") };
+  return safe;
 }
 
 export function OPTIONS() {

@@ -1,20 +1,40 @@
 ﻿"use client";
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Award, Bell, CalendarDays, Check, ChevronRight, ClipboardList, Eye, EyeOff, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Search, ShieldCheck, UserRound, Users, X } from "lucide-react";
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
+import { Award, Bell, Bot, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 
 type Role = "PERSONNEL" | "SDM" | "ADJT";
-type ProfileMetadata = { family?: Record<string, string>; military?: Record<string, string>; medical?: Record<string, string>; fitness?: Record<string, string> };
+type TableRow = Record<string, string>;
+type ProfileMetadata = { family?: Record<string, string>; military?: Record<string, string>; medical?: Record<string, string>; fitness?: Record<string, string>; courses?: TableRow[]; postings?: TableRow[]; honours?: TableRow[]; medicalHistory?: TableRow[]; medicalExams?: TableRow[]; vaccinations?: TableRow[]; bpetPpt?: TableRow[] };
 type Account = { id: string; serviceNumber: string; fullName: string; rank: string; trade: string; hometown: string; role: Role; squadron: string; metadata?: ProfileMetadata; annualLeaveBalance?: number; casualLeaveBalance?: number };
-type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string };
+type Amendment = { fromDate: string; toDate: string; reportingDate: string; requestedDays: number; status: "PENDING" | "SDM_APPROVED" | "ADJT_APPROVED" | "APPROVED" | "REJECTED"; sdmApproved: boolean; adjtApproved: boolean; from?: string; to?: string };
+type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null };
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 const api = (path: string) => `${API}${path}`;
 const SQUADRONS = ["AGNI", "BHARAT", "CHARDIKALA", "JHANGI"];
+const LEAVE_ALLOWANCES = { AL: 60, CL: 30 } as const;
+
+function LeaveBalance({ type, remaining }: { type: "AL" | "CL"; remaining?: number }) {
+  const total = LEAVE_ALLOWANCES[type];
+  const safeRemaining = Math.max(0, Math.min(total, Number.isFinite(remaining) ? Number(remaining) : total));
+  const used = total - safeRemaining;
+  const percentage = Math.round((safeRemaining / total) * 100);
+  return <div className="rounded-xl border border-[#d8e5dc] bg-[#f7fbf8] p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black tracking-wide text-[#214a38]">{type === "AL" ? "Annual Leave" : "Casual Leave"}</p><p className="mt-1 text-xs text-[#789489]">{used} of {total} days availed</p></div><b className="text-lg text-[#1d6047]">{percentage}%</b></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[#dfeae2]"><div className="h-full rounded-full bg-[#39835d]" style={{ width: `${percentage}%` }} /></div><div className="mt-3 flex items-end justify-between"><span className="text-xs font-semibold text-[#789489]">{total} days total</span><span className="text-sm font-black text-[#214a38]">{safeRemaining} days remaining</span></div></div>;
+}
+
+function calendarDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export default function Home() {
   const [account, setAccount] = useState<Account | null>(null);
   const [register, setRegister] = useState(false);
+  useEffect(() => { void CapacitorUpdater.notifyAppReady(); }, []);
   return account ? <Workspace account={account} setAccount={setAccount} /> : <Auth register={register} setRegister={setRegister} onLogin={setAccount} />;
 }
 
@@ -25,20 +45,23 @@ function Auth({ register, setRegister, onLogin }: { register: boolean; setRegist
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(""); try { const response = await fetch(api("/api/personnel"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, action: register ? "register" : "login" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Authentication failed."); onLogin(data.account); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to connect to Tresath."); } finally { setBusy(false); } }
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#07120d] text-white selection:bg-[#d7ae3d] selection:text-[#07120d]">
+    <main className="relative min-h-screen overflow-hidden bg-[#06130d] text-white selection:bg-[#d7ae3d] selection:text-[#06130d]">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <img src="/ghost-regiment.jpg" alt="" className="absolute left-1/2 top-0 h-[48rem] w-[48rem] max-w-none -translate-x-1/2 object-contain opacity-[0.13] sm:left-[25%] sm:top-[-9rem] sm:h-[58rem] sm:w-[58rem]" />
-        <div className="absolute inset-0 bg-[linear-gradient(112deg,rgba(7,18,13,0.94)_15%,rgba(7,18,13,0.79)_55%,rgba(7,18,13,0.96)_100%)]" />
-        <div className="absolute inset-x-0 top-0 h-px bg-[#d7ae3d]/50" />
+        <img src="/ghost-regiment.jpg" alt="" className="absolute left-1/2 top-1/2 h-[min(74vh,42rem)] w-[min(92vw,42rem)] -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.23] lg:left-[29%] lg:h-[min(78vh,48rem)] lg:w-[min(56vw,48rem)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,19,13,0.7),rgba(6,19,13,0.3)_50%,rgba(6,19,13,0.9))]" />
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-[#9d3032]" />
+        <div className="absolute inset-x-0 top-[2px] h-[2px] bg-[#d9ded8]" />
+        <div className="absolute inset-x-0 top-[4px] h-[2px] bg-[#d7ae3d]" />
       </div>
 
       <div className="relative z-10 mx-auto grid min-h-screen max-w-7xl items-center gap-10 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_30rem] lg:gap-24 lg:px-12 xl:px-16">
-        <section className="mx-auto w-full max-w-lg text-center lg:mx-0 lg:text-left">
-          <div className="flex items-center justify-center gap-4 lg:justify-start">
-            <img src="/ghost-regiment.jpg" alt="63 Cavalry crest" className="h-14 w-14 rounded-full border border-[#d7ae3d]/70 bg-[#08140e] object-cover p-1 shadow-[0_0_28px_rgba(215,174,61,0.18)]" />
-            <div className="text-left"><p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#d7ae3d]">63 Cavalry</p><p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45">The Ghost Regiment</p></div>
+        <section className="mx-auto flex w-full max-w-lg flex-col items-center text-center lg:mx-0 lg:min-h-[38rem] lg:items-start lg:text-left">
+          <div className="flex items-center gap-4">
+            <img src="/ghost-regiment.jpg" alt="63 Cavalry insignia" className="h-16 w-16 rounded-full border border-[#d7ae3d]/70 bg-[#08140e] object-cover p-1 shadow-[0_0_28px_rgba(215,174,61,0.18)]" />
+            <div className="text-left"><p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#d7ae3d]">63 Cavalry</p><p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">The Ghost Regiment</p></div>
           </div>
-          <div className="mt-12 hidden border-t border-white/10 pt-5 lg:flex lg:items-center lg:gap-3"><Fingerprint size={18} className="text-[#d7ae3d]" /><p className="text-xs font-semibold text-white/45">Personal data is secured and masked by default.</p></div>
+          <div className="mt-12 rounded-sm border-y border-white/10 bg-[#06130d]/35 px-6 py-5 text-center backdrop-blur-[1px] lg:mt-auto lg:w-full"><p lang="hi" className="text-3xl font-bold leading-none text-white/70 sm:text-4xl">पराक्रम ही धर्म है</p><p className="mt-3 text-[10px] font-bold uppercase tracking-[0.26em] text-[#d7ae3d]">Parakram hi dharam hai</p></div>
+          <div className="mt-6 hidden items-center gap-3 lg:flex"><Fingerprint size={18} className="text-[#d7ae3d]" /><p className="text-xs font-semibold text-white/50">Personal data is secured.</p></div>
         </section>
 
         <section className="mx-auto w-full max-w-md border border-white/15 bg-[#0a1911]/95 p-6 shadow-2xl shadow-black/30 backdrop-blur sm:p-8">
@@ -52,7 +75,7 @@ function Auth({ register, setRegister, onLogin }: { register: boolean; setRegist
             <button disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 bg-[#d7ae3d] px-4 py-3 text-sm font-black text-[#07120d] transition hover:bg-[#ebc653] disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Connecting..." : register ? "Create profile" : "Continue to workspace"}<ChevronRight size={18} /></button>
           </form>
           <button onClick={() => { setRegister(!register); setError(""); }} className="mt-7 text-left text-xs font-bold text-white/55 transition hover:text-[#d7ae3d]">{register ? "Already registered? Sign in" : "First time using Tresath? Create a profile"}</button>
-          <p className="mt-7 flex items-center gap-2 border-t border-white/10 pt-5 text-[11px] font-semibold leading-5 text-white/40 lg:hidden"><Fingerprint size={16} className="shrink-0 text-[#d7ae3d]" /> Personal data is secured and masked by default.</p>
+          <p className="mt-7 flex items-center gap-2 border-t border-white/10 pt-5 text-[11px] font-semibold leading-5 text-white/40 lg:hidden"><Fingerprint size={16} className="shrink-0 text-[#d7ae3d]" /> Personal data is secured.</p>
         </section>
       </div>
     </main>
@@ -68,7 +91,102 @@ function Intro({ title, detail }: { title: string; detail: string }) { return <d
 function Status({ value }: { value: string }) { return <span className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${value === "Approved" ? "bg-[#e2f3e7] text-[#347c55]" : value === "Rejected" ? "bg-[#fae6e5] text-[#ad5652]" : "bg-[#fff1d9] text-[#a8762c]"}`}>{value}</span>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-[#cbded1] p-8 text-center text-sm text-[#829c8f]">{text}</div>; }
 
-function Workspace({ account, setAccount }: { account: Account; setAccount: (account: Account | null) => void }) { const command = account.role !== "PERSONNEL"; const [view, setView] = useState(command ? "overview" : "profile"); const [menu, setMenu] = useState(false); const [leave, setLeave] = useState<Leave[]>([]); const [people, setPeople] = useState<Person[]>([]); const [notice, setNotice] = useState(""); useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]); const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "leave", text: "Leave board", icon: ClipboardList }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "profile", text: "My details", icon: UserRound }, { id: "leave", text: "Leave availed", icon: CalendarDays }]; const title = view === "profile" ? "My details" : view === "leave" ? command ? "Leave board" : "Leave availed" : view === "people" ? "All personnel" : "Command overview"; return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{account.squadron} squadron</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{title}</h1></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} Â· {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view === "profile" && <Profile account={account} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>; }
+function Workspace({ account, setAccount }: { account: Account; setAccount: (account: Account | null) => void }) {
+  const command = account.role !== "PERSONNEL";
+  const [view, setView] = useState(command ? "overview" : "personal");
+  const [menu, setMenu] = useState(false);
+  const [leave, setLeave] = useState<Leave[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [notice, setNotice] = useState("");
+  useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]);
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+}
+
+function AIAssistant({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
+    { role: "assistant", text: `Welcome, ${account.fullName}. I can help review leave status, summarize personnel data, and suggest actions for ${account.role === "ADJT" ? "all squadrons" : account.squadron}.` }
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || busy) return;
+
+    const nextMessages: Array<{ role: "user" | "assistant"; text: string }> = [...messages, { role: "user", text: trimmed }];
+    setMessages(nextMessages);
+    setInput("");
+    setBusy(true);
+    setError("");
+
+    try {
+      const response = await fetch(api("/api/assistant"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: trimmed,
+          context: {
+            role: account.role,
+            squadron: account.squadron,
+            serviceNumber: account.serviceNumber,
+            leaveCount: leave.length,
+            peopleCount: people.length,
+          }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to reach the AI assistant.");
+      setMessages((current) => [...current, { role: "assistant", text: data.answer ?? "I do not have a response yet." }]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to connect to the assistant.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Intro title="AI assistant" detail="Ask for summaries, leave insights, command guidance, and quick next steps from your Azure AI Foundry connected assistant." />
+      <section className="rounded-2xl border border-[#d8e5dc] bg-white p-4 sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#e5f3e9] text-[#1d6047]"><Bot size={20} /></span>
+            <div>
+              <p className="text-sm font-black text-[#214a38]">Tresath command assistant</p>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-[#7d9b8d]">Azure AI Foundry</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-h-[28rem] space-y-3 overflow-y-auto rounded-2xl border border-[#e3ece6] bg-[#f7faf8] p-4">
+          {messages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "assistant" ? "bg-[#eaf5ee] text-[#1c3e30]" : "ml-auto bg-[#123a2d] text-white"}`}>
+              {message.text}
+            </div>
+          ))}
+        </div>
+
+        {error && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}
+
+        <form onSubmit={sendMessage} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Ask about leave, squadron readiness, or next actions..."
+            className="w-full rounded-xl border border-[#d8e3dc] bg-[#f9fbfa] px-4 py-3 text-sm outline-none focus:border-[#5c9b79]"
+          />
+          <button disabled={busy} className="rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">
+            {busy ? "Thinking..." : "Send"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
 
 function Profile({ account, onSaved }: { account: Account; onSaved: (account: Account) => void }) {
   const family = account.metadata?.family ?? {};
@@ -88,9 +206,248 @@ function Profile({ account, onSaved }: { account: Account; onSaved: (account: Ac
   return <form onSubmit={save}><Intro title="Service record" detail="Maintain one secure profile for service, family, medical, and fitness readiness." /><div className="grid gap-6 xl:grid-cols-2"><Panel title="Core profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{field("Full name", "fullName", "text", true)}{field("Army / service no.", "serviceNumber")}{field("Rank", "rank", "text", true)}{field("Arm / service", "trade", "text", true)}{field("Parent unit", "parentUnit")}{field("Present unit", "presentUnit")}{field("Date of birth", "dateOfBirth", "date")}{field("Hometown / address", "hometown", "text", true)}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{field("Date of enrolment / commission", "dateOfEnrolment", "date")}{field("Date of present rank", "dateOfPresentRank", "date")}{field("Total length of service", "totalService")}{field("Superannuation date", "superannuationDate", "date")}{field("Security clearance", "securityClearance")}{field("Conduct / ACR summary", "conductRecord")}</div></Panel><Panel title="Courses & qualifications" icon={Award}><div className="grid gap-4 sm:grid-cols-2">{field("Course name", "coursesAttended")}{field("Institution", "courseInstitution")}{field("Grading / class", "courseGradings")}{field("Completion date", "courseCompletionDate", "date")}{field("Postings & deployments", "postings")}{field("Decorations & honours", "decorations")}</div></Panel><Panel title="Family & next of kin" icon={Users}><div className="grid gap-4 sm:grid-cols-2">{field("Primary NOK name", "nokName")}{field("NOK relationship", "nokRelationship")}{field("NOK contact number", "nokContact")}{field("Alternate contact", "alternateContact")}{field("Permanent address", "permanentAddress")}{field("Dependent name", "dependentName")}{field("Dependent relationship", "dependentRelation")}{field("Dependent date of birth", "dependentDob", "date")}{field("Aadhar / national ID", "nationalId")}{field("Dependency status", "dependencyStatus")}{field("Dependent occupation", "dependentOccupation")}{field("School / college details", "schoolDetails")}{field("Education allowance", "educationAllowance")}{field("AWWA / welfare activities", "welfareActivities")}{field("Emergency contact", "emergencyContact")}{field("Emergency relation", "emergencyRelation")}{field("Verified emergency phone", "emergencyPhone")}</div></Panel><Panel title="Medical classification & history" icon={HeartPulse}><div className="grid gap-4 sm:grid-cols-2">{field("SHAPE - Psychiatric (S)", "shapeS")}{field("SHAPE - Hearing (H)", "shapeH")}{field("SHAPE - Appendages (A)", "shapeA")}{field("SHAPE - Physical capacity (P)", "shapeP")}{field("SHAPE - Eyesight (E)", "shapeE")}{field("Current medical category", "medicalCategory")}{field("Last medical board", "lastMedicalBoard", "date")}{field("Next review date", "nextReviewDate", "date")}{field("Major surgeries / hospital", "surgeries")}{field("Chronic conditions", "chronicConditions")}{field("Prescribed medications", "medications")}{field("Allergies", "allergies")}</div></Panel><Panel title="Physical parameters & checkups" icon={HeartPulse}><div className="grid gap-4 sm:grid-cols-2">{field("Height (cm)", "height", "number")}{field("Weight (kg)", "weight", "number")}{field("Ideal body weight", "ibw", "number")}{field("BMI", "bmi", "number")}{field("Blood group", "bloodGroup")}{field("Rh factor", "rhFactor")}{field("Annual medical exam date", "ameDate", "date")}{field("Vaccination log", "vaccinations")}</div></Panel><Panel title="BPET / PPT fitness test" icon={Award}><div className="grid gap-4 sm:grid-cols-2">{field("Test date", "testDate", "date")}{field("2.4 km / 5 km run time", "runTime")}{field("Push-ups", "pushups", "number")}{field("Sit-ups", "situps", "number")}{field("Rope / ditch results", "obstacleResults")}{field("Overall grade", "fitnessGrade")}</div></Panel></div><button className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save service record</button></form>;
 }
 
-function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]; onAdded: (record: Leave) => void }) { const [form, setForm] = useState({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" }); const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value })); const days = form.fromDate && form.toDate ? Math.floor((new Date(form.toDate).getTime() - new Date(form.fromDate).getTime()) / 86400000) + 1 : 0; async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const response = await fetch(api("/api/leave"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, recordType: "AVAILED", serviceNumber: account.serviceNumber, requestedDays: Number(form.requestedDays || days) }) }); const data = await response.json(); if (response.ok) { onAdded(data.leave); setForm({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" }); } } return <><Intro title="Leave availed" detail="Record leave already taken. This does not create an approval request." /><div className="grid gap-6 xl:grid-cols-2"><form onSubmit={submit}><Panel title="Add availed leave" icon={CalendarDays}><div className="grid gap-4 sm:grid-cols-2"><Select label="Leave type" value={form.leaveType} options={["AL", "CL"]} onChange={(value) => set("leaveType", value)} /><Field label="Days availed" value={form.requestedDays || String(days || "")} onChange={(value) => set("requestedDays", value)} type="number" /><DateInput label="From" value={form.fromDate} onChange={(value) => set("fromDate", value)} /><DateInput label="To" value={form.toDate} onChange={(value) => set("toDate", value)} /><DateInput label="Return date" value={form.reportingDate} onChange={(value) => set("reportingDate", value)} /></div><button className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save leave record</button></Panel></form><Panel title="Leave history" icon={ClipboardList}>{leave.length ? leave.map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.type} Â· {item.from} to {item.to}<small className="block text-xs font-normal text-[#829c8f]">Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records yet." />}</Panel></div></>; }
+type RecordColumn = { key: string; label: string; type?: string };
+const courseColumns: RecordColumn[] = [{ key: "course", label: "Course" }, { key: "institution", label: "Institution" }, { key: "grade", label: "Grade" }, { key: "completed", label: "Completion date", type: "date" }];
+const postingColumns: RecordColumn[] = [{ key: "unit", label: "Unit / appointment" }, { key: "location", label: "Location" }, { key: "from", label: "From", type: "date" }, { key: "to", label: "To", type: "date" }];
+const honourColumns: RecordColumn[] = [{ key: "honour", label: "Honour / decoration" }, { key: "year", label: "Year" }, { key: "citation", label: "Citation / remarks" }];
+const medicalHistoryColumns: RecordColumn[] = [{ key: "date", label: "Date", type: "date" }, { key: "condition", label: "Condition / procedure" }, { key: "treatment", label: "Treatment" }, { key: "remarks", label: "Hospital / remarks" }];
+const medicalExamColumns: RecordColumn[] = [{ key: "date", label: "Exam date", type: "date" }, { key: "category", label: "Medical category / SHAPE" }, { key: "height", label: "Height (cm)", type: "number" }, { key: "weight", label: "Weight (kg)", type: "number" }, { key: "bmi", label: "BMI", type: "number" }, { key: "bloodGroup", label: "Blood group" }];
+const vaccinationColumns: RecordColumn[] = [{ key: "date", label: "Date", type: "date" }, { key: "vaccine", label: "Vaccine" }, { key: "dose", label: "Dose" }, { key: "remarks", label: "Remarks" }];
+const fitnessColumns: RecordColumn[] = [{ key: "date", label: "Test date", type: "date" }, { key: "runTime", label: "Run time" }, { key: "pushups", label: "Push-ups", type: "number" }, { key: "situps", label: "Sit-ups", type: "number" }, { key: "obstacles", label: "Rope / ditch" }, { key: "grade", label: "Grade" }];
 
-function Overview({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) { const [tomorrow, setTomorrow] = useState(""); useEffect(() => { const timer = window.setTimeout(() => setTomorrow(new Date(Date.now() + 86400000).toISOString().slice(0, 10)), 0); return () => window.clearTimeout(timer); }, []); const returning = leave.filter((item) => item.reportingDate === tomorrow); const onLeave = leave.filter((item) => item.status === "Approved").length; return <><Intro title="Command overview" detail={account.role === "SDM" ? `${account.squadron} squadron strength and leave picture.` : "All four squadrons in one operating picture."} />{returning.length > 0 && <div className="mb-6 flex gap-3 rounded-2xl border border-[#f0d9a8] bg-[#fff6e2] p-4 text-[#8d6725]"><Bell size={19} /><p><b>Return notification</b><br /><span className="text-sm">{returning.length} personnel due back from leave tomorrow.</span></p></div>}<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total strength" value={String(people.length)} icon={Users} /><Metric label="Available" value={String(Math.max(0, people.length - onLeave))} icon={ShieldCheck} /><Metric label="Leave strength" value={String(onLeave)} icon={CalendarDays} /><Metric label="Return tomorrow" value={String(returning.length)} icon={Bell} /></div><div className="mt-6"><Panel title="Leave activity" icon={ClipboardList}>{leave.length ? leave.slice(0, 8).map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.name ?? "Masked personnel"}<small className="block text-xs font-normal text-[#829c8f]">{item.type} Â· {item.from} to {item.to} Â· Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records found." />}</Panel></div></>; }
+function blankRow(columns: RecordColumn[]) { return Object.fromEntries(columns.map((column) => [column.key, ""])) as TableRow; }
+function legacyRows(rows: TableRow[] | undefined, columns: RecordColumn[], legacy?: TableRow) { return rows?.length ? rows : legacy && Object.values(legacy).some(Boolean) ? [{ ...blankRow(columns), ...legacy }] : []; }
+function RecordTableEditor({ title, columns, rows, onChange }: { title: string; columns: RecordColumn[]; rows: TableRow[]; onChange: (rows: TableRow[]) => void }) { return <Panel title={title} icon={ClipboardList}><div className="overflow-x-auto"><table className="w-full min-w-[740px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr>{columns.map((column) => <th key={column.key} className="pb-3 pr-3">{column.label}</th>)}<th className="w-12 pb-3"><span className="sr-only">Remove</span></th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column.key} className="py-2 pr-3"><input type={column.type ?? "text"} value={row[column.key] ?? ""} onChange={(event) => onChange(rows.map((current, rowIndex) => rowIndex === index ? { ...current, [column.key]: event.target.value } : current))} className="w-full min-w-28 border border-[#d8e3dc] bg-white px-2.5 py-2 text-sm outline-none focus:border-[#5c9b79]" /></td>)}<td className="py-2"><button type="button" onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))} className="p-2 text-[#a44d49] hover:bg-[#fae6e5]" aria-label={`Remove ${title} entry`}><Trash2 size={16} /></button></td></tr>)}</tbody></table></div><button type="button" onClick={() => onChange([...rows, blankRow(columns)])} className="mt-4 flex items-center gap-2 border border-[#bcd8c6] px-3 py-2 text-xs font-bold text-[#287052] hover:bg-[#e5f3e9]"><Plus size={15} />Add entry</button></Panel>; }
+function RecordTable({ title, columns, rows }: { title: string; columns: RecordColumn[]; rows: TableRow[] }) { return <Panel title={title} icon={ClipboardList}>{rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr>{columns.map((column) => <th key={column.key} className="pb-3 pr-4">{column.label}</th>)}</tr></thead><tbody className="divide-y divide-[#edf2ee]">{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column.key} className="py-3 pr-4 text-[#315642]">{row[column.key] || "-"}</td>)}</tr>)}</tbody></table></div> : <Empty text={`No ${title.toLowerCase()} entries recorded.`} />}</Panel>; }
+
+function ProfileSections({ account, section, onSaved }: { account: Account; section: string; onSaved: (account: Account) => void }) {
+  const metadata = account.metadata ?? {};
+  const military = metadata.military ?? {};
+  const medical = metadata.medical ?? {};
+  const fitness = metadata.fitness ?? {};
+  const [personal, setPersonal] = useState({ fullName: account.fullName, rank: account.rank, trade: account.trade, hometown: account.hometown, parentUnit: military.parentUnit ?? "", presentUnit: military.presentUnit ?? "", dateOfBirth: military.dateOfBirth ?? "", dateOfEnrolment: military.dateOfEnrolment ?? "", dateOfPresentRank: military.dateOfPresentRank ?? "", superannuationDate: military.superannuationDate ?? "", totalService: military.totalService ?? "", securityClearance: military.securityClearance ?? "", conductRecord: military.conductRecord ?? "" });
+  const [courses, setCourses] = useState(() => legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }));
+  const [postings, setPostings] = useState(() => legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }));
+  const [honours, setHonours] = useState(() => legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }));
+  const [medicalHistory, setMedicalHistory] = useState(() => legacyRows(metadata.medicalHistory, medicalHistoryColumns, { condition: medical.chronicConditions ?? "", treatment: medical.medications ?? "", remarks: medical.surgeries ?? "" }));
+  const [medicalExams, setMedicalExams] = useState(() => legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }));
+  const [vaccinations, setVaccinations] = useState(() => legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }));
+  const [fitnessRows, setFitnessRows] = useState(() => legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }));
+  async function save() { const nextMetadata: ProfileMetadata = { ...metadata, military: { ...military, parentUnit: personal.parentUnit, presentUnit: personal.presentUnit, dateOfBirth: personal.dateOfBirth, dateOfEnrolment: personal.dateOfEnrolment, dateOfPresentRank: personal.dateOfPresentRank, superannuationDate: personal.superannuationDate, totalService: personal.totalService, securityClearance: personal.securityClearance, conductRecord: personal.conductRecord }, courses, postings, honours, medicalHistory, medicalExams, vaccinations, bpetPpt: fitnessRows }; const response = await fetch(api("/api/personnel"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceNumber: account.serviceNumber, ...(section === "personal" ? { fullName: personal.fullName, rank: personal.rank, trade: personal.trade, hometown: personal.hometown } : {}), metadata: nextMetadata }) }); if (response.ok) onSaved((await response.json()).account); }
+  const personalField = (label: string, key: keyof typeof personal, type = "text") => <Field label={label} value={personal[key]} onChange={(value) => setPersonal((current) => ({ ...current, [key]: value }))} type={type} required={key === "fullName" || key === "rank" || key === "trade" || key === "hometown"} />;
+  const content = section === "personal" ? <div className="grid gap-6 xl:grid-cols-2"><Panel title="Service profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{personalField("Full name", "fullName")}<div className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Army / service no.</span><p className="border border-[#d8e3dc] bg-[#f5f9f6] px-4 py-3 text-sm font-semibold">{account.serviceNumber}</p></div>{personalField("Rank", "rank")}{personalField("Arm / service", "trade")}{personalField("Parent unit", "parentUnit")}{personalField("Present unit", "presentUnit")}{personalField("Date of birth", "dateOfBirth", "date")}{personalField("Hometown / address", "hometown")}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Date of enrolment / commission", "dateOfEnrolment", "date")}{personalField("Date of present rank", "dateOfPresentRank", "date")}{personalField("Total length of service", "totalService")}{personalField("Superannuation date", "superannuationDate", "date")}{personalField("Security clearance", "securityClearance")}{personalField("Conduct / ACR summary", "conductRecord")}</div></Panel></div> : section === "medical" ? <div className="grid gap-6"><RecordTableEditor title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} onChange={setMedicalHistory} /><RecordTableEditor title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} onChange={setMedicalExams} /><RecordTableEditor title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} onChange={setVaccinations} /></div> : section === "courses" ? <div className="grid gap-6"><RecordTableEditor title="Courses & qualifications" columns={courseColumns} rows={courses} onChange={setCourses} /><RecordTableEditor title="Postings & deployments" columns={postingColumns} rows={postings} onChange={setPostings} /><RecordTableEditor title="Honours & decorations" columns={honourColumns} rows={honours} onChange={setHonours} /></div> : <RecordTableEditor title="BPET / PPT results" columns={fitnessColumns} rows={fitnessRows} onChange={setFitnessRows} />;
+  const detail = section === "personal" ? "Maintain core service and personal information." : section === "medical" ? "Keep a dated history of medical care, examinations, and vaccinations." : section === "courses" ? "Add each course, posting, and honour as its own record." : "Record every BPET and PPT assessment separately.";
+  return <><Intro title={section === "personal" ? "Personal details" : section === "medical" ? "Medical details" : section === "courses" ? "Courses & qualifications" : "BPET & PPT results"} detail={detail} />{content}<button type="button" onClick={() => void save()} className="mt-6 bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save {section === "personal" ? "details" : "records"}</button></>;
+}
+
+function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]; onAdded: (record: Leave) => void }) {
+  const [form, setForm] = useState({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
+  const [balances, setBalances] = useState({ AL: account.annualLeaveBalance, CL: account.casualLeaveBalance });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [amendForm, setAmendForm] = useState({ fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const setAmend = (key: keyof typeof amendForm, value: string) => setAmendForm((current) => ({ ...current, [key]: value }));
+  const days = form.fromDate && form.toDate ? Math.floor((new Date(form.toDate).getTime() - new Date(form.fromDate).getTime()) / 86400000) + 1 : 0;
+  const amendDays = amendForm.fromDate && amendForm.toDate ? Math.floor((new Date(amendForm.toDate).getTime() - new Date(amendForm.fromDate).getTime()) / 86400000) + 1 : 0;
+  
+  async function submit(event: FormEvent<HTMLFormElement>) { 
+    event.preventDefault(); 
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(api("/api/leave"), { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ ...form, recordType: "AVAILED", serviceNumber: account.serviceNumber, requestedDays: Number(form.requestedDays || days) }) 
+      }); 
+      const data = await response.json(); 
+      if (response.ok) { 
+        onAdded(data.leave); 
+        setBalances((current) => ({ ...current, [data.leave.type]: data.leave.balanceAfter })); 
+        setForm({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" }); 
+        setError("");
+      } else {
+        setError(data.error || "Unable to save leave record.");
+      }
+    } catch (err) {
+      setError("Unable to connect to server.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function requestAmendment(leaveId: string) {
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(api("/api/leave"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: leaveId,
+          action: "request_amendment",
+          serviceNumber: account.serviceNumber,
+          fromDate: amendForm.fromDate,
+          toDate: amendForm.toDate,
+          reportingDate: amendForm.reportingDate,
+          requestedDays: Number(amendForm.requestedDays || amendDays)
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        onAdded(data.leave);
+        setEditingId(null);
+        setAmendForm({ fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
+        setError("");
+      } else {
+        setError(data.error || "Unable to request amendment.");
+      }
+    } catch (err) {
+      setError("Unable to connect to server.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startEdit(item: Leave) {
+    setEditingId(item.id);
+    setAmendForm({
+      fromDate: item.from,
+      toDate: item.to,
+      reportingDate: item.reportingDate,
+      requestedDays: String(item.requestedDays || "")
+    });
+    setError("");
+  }
+
+  return <><Intro title="Leave details" detail="Track leave availed, days used, and the balance still available." /><div className="mb-6 grid gap-4 sm:grid-cols-2"><LeaveBalance type="AL" remaining={balances.AL} /><LeaveBalance type="CL" remaining={balances.CL} /></div><div className="grid gap-6 xl:grid-cols-2"><form onSubmit={submit}><Panel title="Add availed leave" icon={CalendarDays}><div className="grid gap-4 sm:grid-cols-2"><Select label="Leave type" value={form.leaveType} options={["AL", "CL"]} onChange={(value) => set("leaveType", value)} /><Field label="Days availed" value={form.requestedDays || String(days || "")} onChange={(value) => set("requestedDays", value)} type="number" /><DateInput label="From" value={form.fromDate} onChange={(value) => set("fromDate", value)} /><DateInput label="To" value={form.toDate} onChange={(value) => set("toDate", value)} /><DateInput label="Return date" value={form.reportingDate} onChange={(value) => set("reportingDate", value)} /></div>{error && !editingId && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}<button disabled={submitting} className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting ? "Saving..." : "Save leave record"}</button></Panel></form><Panel title="Leave history" icon={ClipboardList}>{leave.length ? leave.map((item) => {
+    const isEditing = editingId === item.id;
+    const canEdit = item.status === "Approved" && !item.amendment;
+    return (
+      <div key={item.id}>
+        {isEditing ? (
+          <div className="mb-3 rounded-xl border border-[#e3ece6] bg-[#f5f9f6] p-4">
+            <p className="mb-3 text-sm font-bold text-[#315642]">Request leave modification for early recall</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DateInput label="New from date" value={amendForm.fromDate} onChange={(value) => setAmend("fromDate", value)} />
+              <DateInput label="New to date" value={amendForm.toDate} onChange={(value) => setAmend("toDate", value)} />
+              <DateInput label="New return date" value={amendForm.reportingDate} onChange={(value) => setAmend("reportingDate", value)} />
+              <Field label="Days" value={amendForm.requestedDays || String(amendDays || "")} onChange={(value) => setAmend("requestedDays", value)} type="number" />
+            </div>
+            {error && <p role="alert" className="mt-2 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => requestAmendment(item.id)} disabled={submitting} className="rounded-lg bg-[#1d6047] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{submitting ? "Requesting..." : "Send to SDM & Adjutant"}</button>
+              <button onClick={() => { setEditingId(null); setError(""); }} className="rounded-lg border border-[#bcd8c6] px-3 py-2 text-xs font-bold text-[#287052]">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3">
+            <div className="flex-1">
+              <span className="text-sm font-bold">{item.type} · {item.from} to {item.to}<small className="block text-xs font-normal text-[#829c8f]">{item.requestedDays ?? "-"} days · Return {item.reportingDate}</small></span>
+              {item.amendment && <small className="mt-2 block text-xs text-[#8d6725]">Amendment pending: {item.amendment.from} to {item.amendment.to} ({item.amendment.status})</small>}
+            </div>
+            <div className="flex items-center gap-2">
+              <Status value={item.status} />
+              {canEdit && <button onClick={() => startEdit(item)} className="rounded-lg border border-[#bcd8c6] p-2 text-[#287052] hover:bg-[#e5f3e9]" aria-label="Modify leave" title="Recall or adjust leave dates"><ChevronRight size={16} /></button>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }) : <Empty text="No leave records yet." />}</Panel></div></>;
+}
+
+function Overview({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
+  const today = calendarDate();
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = calendarDate(tomorrowDate);
+  const onLeaveRecords = leave.filter((item) => item.status === "Approved" && item.from <= today && item.reportingDate > today);
+  const returning = onLeaveRecords.filter((item) => item.reportingDate === tomorrow);
+  const onLeave = onLeaveRecords.length;
+  const squadrons = account.role === "ADJT" ? SQUADRONS : [account.squadron];
+  return <><Intro title="Command overview" detail={account.role === "SDM" ? `${account.squadron} squadron strength and leave picture.` : "All four squadrons in one operating picture."} />{returning.length > 0 && <Panel title={`Returning tomorrow · ${returning.length}`} icon={Bell}><p className="mb-4 text-sm text-[#789489]">Personnel due to report back tomorrow.</p><div className="space-y-2">{returning.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#fff6e2] p-3"><div><p className="font-bold text-[#5d4720]">{item.name ?? "Personnel name unavailable"}</p><p className="text-xs text-[#8d6725]">{item.rank} · {item.squadron} · {item.armyNo}</p></div><span className="text-xs font-bold text-[#8d6725]">Return {item.reportingDate}</span></div>)}</div></Panel>}<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total strength" value={String(people.length)} icon={Users} /><Metric label="Available" value={String(Math.max(0, people.length - onLeave))} icon={ShieldCheck} /><Metric label="Leave strength" value={String(onLeave)} icon={CalendarDays} /><Metric label="Return tomorrow" value={String(returning.length)} icon={Bell} /></div><div className="mt-6 grid gap-6 xl:grid-cols-3"><Panel title={account.role === "ADJT" ? "All squadron state" : `${account.squadron} squadron state`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[440px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Squadron</th><th className="pb-3">Strength</th><th className="pb-3">On leave</th><th className="pb-3">Available</th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{squadrons.map((squadron) => { const strength = people.filter((person) => person.squadron === squadron).length; const leaveStrength = onLeaveRecords.filter((item) => item.squadron === squadron).length; return <tr key={squadron}><td className="py-3 font-bold">{squadron}</td><td className="py-3">{strength}</td><td className="py-3">{leaveStrength}</td><td className="py-3">{Math.max(0, strength - leaveStrength)}</td></tr>; })}</tbody></table></div></Panel><Panel title={`Personnel on leave · ${onLeave}`} icon={CalendarDays}>{onLeaveRecords.length ? onLeaveRecords.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#eef7f0] p-3"><p className="font-bold text-[#214a38]">{item.name ?? "Personnel name unavailable"}</p><p className="mt-1 text-xs text-[#58786a]">{item.rank} · {item.squadron} · {item.armyNo}</p><p className="mt-1 text-xs text-[#58786a]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</p></div>) : <Empty text="No personnel are currently on leave." />}</Panel><Panel title="Leave activity" icon={ClipboardList}>{leave.length ? leave.slice(0, 8).map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.name ?? "Personnel name unavailable"}<small className="block text-xs font-normal text-[#829c8f]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records found." />}</Panel></div></>;
+}
 function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Users }) { return <div className="rounded-2xl border border-[#d8e5dc] bg-white p-5"><Icon className="mb-5 text-[#39835d]" size={20} /><p className="text-3xl font-black">{value}</p><p className="mt-1 text-xs font-bold uppercase tracking-wider text-[#8aa095]">{label}</p></div>; }
-function LeaveBoard({ account, leave, onUpdated }: { account: Account; leave: Leave[]; onUpdated: (leave: Leave) => void }) { const [search, setSearch] = useState(""); const visible = leave.filter((item) => `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase())); async function decide(id: string, action: "approve" | "reject") { const response = await fetch(api("/api/leave"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action, actorRole: account.role }) }); if (response.ok) onUpdated((await response.json()).leave); } return <><Intro title="Leave board" detail="Review leave across your command." /><Panel title={`${visible.length} leave records`} icon={ClipboardList}><label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>{visible.length ? visible.map((item) => <div key={item.id} className="mb-3 flex flex-col gap-3 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between"><div><b>{item.name ?? "Masked personnel"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b><p className="mt-1 text-xs text-[#789489]">{item.rank} Â· {item.squadron} Â· {item.type} Â· {item.from} to {item.to} Â· Return {item.reportingDate}</p></div><div className="flex items-center gap-2"><Status value={item.status} />{item.status !== "Approved" && item.status !== "Rejected" && <><button onClick={() => decide(item.id, "approve")} className="rounded-lg bg-[#e1f3e6] p-2 text-[#328158]" aria-label="Approve"><Check size={16} /></button><button onClick={() => decide(item.id, "reject")} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Reject"><X size={16} /></button></>}</div></div>) : <Empty text="No leave records match this view." />}</Panel></>; }
-function People({ people }: { people: Person[] }) { return <><Intro title="All personnel" detail="Profile, family, military, and squadron details." /><Panel title={`${people.length} personnel records`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Personnel</th><th className="pb-3">Military</th><th className="pb-3">Family</th><th className="pb-3">Squadron</th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{people.map((person) => <tr key={person.id}><td className="py-4"><b>{person.fullName.replace(/(\w)\w+/g, "$1â€¢â€¢â€¢â€¢")}</b><small className="block text-xs text-[#8aa095]">{person.serviceNumber} Â· {person.rank}</small></td><td className="py-4">{person.trade}<small className="block text-xs text-[#8aa095]">Enrolled {person.metadata?.military?.yearOfEnrollment ?? "Not entered"}</small></td><td className="py-4">{person.metadata?.family?.spouseOccupation ?? "Not entered"}<small className="block text-xs text-[#8aa095]">Children: {person.metadata?.family?.childrenOccupation ?? "Not entered"}</small></td><td className="py-4">{person.squadron}</td></tr>)}</tbody></table>{!people.length && <Empty text="No personnel records found." />}</div></Panel></>; }
+function LeaveBoard({ account, leave, onUpdated }: { account: Account; leave: Leave[]; onUpdated: (leave: Leave) => void }) {
+  const [search, setSearch] = useState("");
+  const today = calendarDate();
+  const visible = leave.filter((item) => item.reportingDate > today && `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase()));
+  const pendingLeaves = visible.filter((item) => item.status !== "Approved" && item.status !== "Rejected");
+  const amendmentRequests = visible.filter((item) => item.amendment && item.amendment.status !== "APPROVED" && item.amendment.status !== "REJECTED");
+  
+  async function decide(id: string, action: "approve" | "reject") { 
+    const response = await fetch(api("/api/leave"), { 
+      method: "PATCH", 
+      headers: { "Content-Type": "application/json" }, 
+      body: JSON.stringify({ id, action, actorRole: account.role }) 
+    }); 
+    if (response.ok) onUpdated((await response.json()).leave); 
+  }
+
+  async function decideAmendment(id: string, action: "approve_amendment" | "reject_amendment") {
+    const response = await fetch(api("/api/leave"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action, actorRole: account.role })
+    });
+    if (response.ok) onUpdated((await response.json()).leave);
+  }
+
+  return <>
+    <Intro title="Leave board" detail="Review and approve current/upcoming leave and modification requests across your command. Personnel are removed automatically on their reporting date." />
+    
+    {amendmentRequests.length > 0 && (
+      <Panel title={`${amendmentRequests.length} pending leave modification requests`} icon={Bell}>
+        <p className="mb-4 text-xs font-semibold text-[#8d6725]">Personnel recalled early requesting to adjust their leave dates. Both SDM and Adjutant approval required.</p>
+        {amendmentRequests.map((item) => (
+          <div key={item.id} className="mb-3 flex flex-col gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <b>{item.name ?? "Personnel name unavailable"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b>
+              <p className="mt-1 text-xs text-[#789489]">{item.rank} · {item.squadron} · {item.type}</p>
+              <p className="mt-1 text-xs font-semibold text-[#8d6725]">Original: {item.from} to {item.to} · Return {item.reportingDate}</p>
+              {item.amendment && (
+                <p className="mt-1 text-xs font-semibold text-[#5d4720]">
+                  Requested: {item.amendment.from} to {item.amendment.to} · Return {item.amendment.reportingDate} ({item.amendment.requestedDays} days)
+                </p>
+              )}
+              {item.amendment && (
+                <small className="mt-1 block text-xs text-[#8d6725]">
+                  Status: {item.amendment.sdmApproved ? "✓ SDM" : "SDM"} · {item.amendment.adjtApproved ? "✓ Adjutant" : "Adjutant"}
+                </small>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => decideAmendment(item.id, "approve_amendment")} className="rounded-lg bg-[#e1f3e6] p-2 text-[#328158]" aria-label="Approve amendment" title="Approve modification"><Check size={16} /></button>
+              <button onClick={() => decideAmendment(item.id, "reject_amendment")} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Reject amendment" title="Reject modification"><X size={16} /></button>
+            </div>
+          </div>
+        ))}
+      </Panel>
+    )}
+
+    <Panel title={`${pendingLeaves.length} pending leave requests`} icon={ClipboardList}>
+      <label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>
+      {pendingLeaves.length ? pendingLeaves.map((item) => (
+        <div key={item.id} className="mb-3 flex flex-col gap-3 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <b>{item.name ?? "Personnel name unavailable"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b>
+            <p className="mt-1 text-xs text-[#789489]">{item.rank} · {item.squadron} · {item.type} · {item.from} to {item.to} · Return {item.reportingDate}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Status value={item.status} />
+            {item.status !== "Approved" && item.status !== "Rejected" && <>
+              <button onClick={() => decide(item.id, "approve")} className="rounded-lg bg-[#e1f3e6] p-2 text-[#328158]" aria-label="Approve"><Check size={16} /></button>
+              <button onClick={() => decide(item.id, "reject")} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Reject"><X size={16} /></button>
+            </>}
+          </div>
+        </div>
+      )) : <Empty text="No pending leave requests." />}
+    </Panel>
+  </>;
+}
+function People({ people }: { people: Person[] }) { const [selected, setSelected] = useState<Person | null>(null); if (selected) return <PersonDetail person={selected} onBack={() => setSelected(null)} />; return <><Intro title="All personnel" detail="Select a person to view their personal, medical, course, posting, honour, vaccination, and BPET/PPT records." /><Panel title={`${people.length} personnel records`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Personnel</th><th className="pb-3">Rank / trade</th><th className="pb-3">Squadron</th><th className="pb-3"><span className="sr-only">View</span></th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{people.map((person) => <tr key={person.id} className="hover:bg-[#f5f9f6]"><td className="py-4"><b>{person.fullName}</b><small className="block text-xs text-[#8aa095]">{person.serviceNumber}</small></td><td className="py-4">{person.rank}<small className="block text-xs text-[#8aa095]">{person.trade}</small></td><td className="py-4">{person.squadron}</td><td className="py-4 text-right"><button type="button" onClick={() => setSelected(person)} className="border border-[#bcd8c6] p-2 text-[#287052] hover:bg-[#e5f3e9]" aria-label={`View ${person.fullName}`}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{!people.length && <Empty text="No personnel records found." />}</div></Panel></>; }
+
+function PersonDetail({ person, onBack }: { person: Person; onBack: () => void }) { const [tab, setTab] = useState("personal"); const metadata = person.metadata ?? {}; const military = metadata.military ?? {}; const medical = metadata.medical ?? {}; const fitness = metadata.fitness ?? {}; const courses = legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }); const postings = legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }); const honours = legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }); const medicalHistory = legacyRows(metadata.medicalHistory, medicalHistoryColumns, { condition: medical.chronicConditions ?? "", treatment: medical.medications ?? "", remarks: medical.surgeries ?? "" }); const medicalExams = legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }); const vaccinations = legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }); const bpetPpt = legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }); const tabs = [{ id: "personal", text: "Personal" }, { id: "medical", text: "Medical" }, { id: "courses", text: "Courses & qualifications" }, { id: "fitness", text: "BPET & PPT" }]; const personalRows = [{ label: "Army / service no.", value: person.serviceNumber }, { label: "Rank", value: person.rank }, { label: "Arm / service", value: person.trade }, { label: "Hometown / address", value: person.hometown }, { label: "Parent unit", value: military.parentUnit ?? "-" }, { label: "Present unit", value: military.presentUnit ?? "-" }, { label: "Date of enrolment", value: military.dateOfEnrolment ?? "-" }, { label: "Security clearance", value: military.securityClearance ?? "-" }]; return <><button type="button" onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-bold text-[#287052]"><ChevronLeft size={17} />All personnel</button><Intro title={person.fullName} detail={`${person.rank} · ${person.serviceNumber} · ${person.squadron} squadron`} /><div className="mb-6 flex flex-wrap gap-2 border-b border-[#d8e5dc] pb-4">{tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`px-3 py-2 text-xs font-bold ${tab === item.id ? "bg-[#1d6047] text-white" : "border border-[#cbded1] text-[#527363]"}`}>{item.text}</button>)}</div>{tab === "personal" && <Panel title="Personal details" icon={UserRound}><table className="w-full text-left text-sm"><tbody className="divide-y divide-[#edf2ee]">{personalRows.map((row) => <tr key={row.label}><th className="w-1/3 py-3 text-xs uppercase tracking-wider text-[#789489]">{row.label}</th><td className="py-3 font-semibold">{row.value}</td></tr>)}</tbody></table></Panel>}{tab === "medical" && <div className="grid gap-6"><RecordTable title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} /><RecordTable title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} /><RecordTable title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} /></div>}{tab === "courses" && <div className="grid gap-6"><RecordTable title="Courses & qualifications" columns={courseColumns} rows={courses} /><RecordTable title="Postings & deployments" columns={postingColumns} rows={postings} /><RecordTable title="Honours & decorations" columns={honourColumns} rows={honours} /></div>}{tab === "fitness" && <RecordTable title="BPET / PPT results" columns={fitnessColumns} rows={bpetPpt} />}</>; }
