@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { Award, Bell, Bot, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 
 type Role = "PERSONNEL" | "SDM" | "ADJT";
 type TableRow = Record<string, string>;
@@ -10,11 +10,76 @@ type ProfileMetadata = { family?: Record<string, string>; military?: Record<stri
 type Account = { id: string; serviceNumber: string; fullName: string; rank: string; trade: string; hometown: string; role: Role; squadron: string; metadata?: ProfileMetadata; annualLeaveBalance?: number; casualLeaveBalance?: number };
 type Amendment = { fromDate: string; toDate: string; reportingDate: string; requestedDays: number; status: "PENDING" | "SDM_APPROVED" | "ADJT_APPROVED" | "APPROVED" | "REJECTED"; sdmApproved: boolean; adjtApproved: boolean; from?: string; to?: string };
 type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null };
+type TDY = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; reason: string; location: string; from: string; to: string };
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 const api = (path: string) => `${API}${path}`;
 const SQUADRONS = ["AGNI", "BHARAT", "CHARDIKALA", "JHANGI"];
 const LEAVE_ALLOWANCES = { AL: 60, CL: 30 } as const;
+
+function RajputCrestIcon({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="32" cy="32" r="30" fill="#7a1f2b" />
+      <path d="M14 20 L50 44" stroke="#d9ded8" strokeWidth="4" strokeLinecap="round" />
+      <path d="M50 20 L14 44" stroke="#d9ded8" strokeWidth="4" strokeLinecap="round" />
+      <path d="M32 16 L44 22 V34 C44 42 38 47 32 50 C26 47 20 42 20 34 V22 Z" fill="#d7ae3d" stroke="#5d4720" strokeWidth="1.5" />
+      <path d="M32 10 C34 14 34 17 32 20 C30 17 30 14 32 10 Z" fill="#e8622c" />
+    </svg>
+  );
+}
+
+function JatCrestIcon({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="32" cy="32" r="30" fill="#1d6047" />
+      <path d="M16 18 L48 46" stroke="#d9ded8" strokeWidth="4" strokeLinecap="round" />
+      <path d="M48 18 L16 46" stroke="#d9ded8" strokeWidth="4" strokeLinecap="round" />
+      <path d="M32 14 L43 20 V31 C43 39 38 44 32 47 C26 44 21 39 21 31 V20 Z" fill="#d7ae3d" stroke="#5d4720" strokeWidth="1.5" />
+      <path d="M24 48 C27 44 29 40 29 36" stroke="#f2c14e" strokeWidth="3" strokeLinecap="round" fill="none" />
+      <path d="M40 48 C37 44 35 40 35 36" stroke="#f2c14e" strokeWidth="3" strokeLinecap="round" fill="none" />
+      <path d="M32 50 C32 45 32 40 32 35" stroke="#f2c14e" strokeWidth="3" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+function KhandaIcon({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="32" cy="32" r="30" fill="#0b2e57" />
+      <circle cx="32" cy="32" r="18" stroke="#f2c14e" strokeWidth="3" fill="none" />
+      <path d="M18 16 L46 48" stroke="#d9ded8" strokeWidth="3.5" strokeLinecap="round" />
+      <path d="M46 16 L18 48" stroke="#d9ded8" strokeWidth="3.5" strokeLinecap="round" />
+      <path d="M32 8 L36 14 L34 44 L32 52 L30 44 L28 14 Z" fill="#eef3f5" stroke="#8aa095" strokeWidth="1" />
+      <rect x="26" y="17" width="12" height="3.5" rx="1" fill="#f2c14e" />
+    </svg>
+  );
+}
+
+function CavalrySaberIcon({ size = 48 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="32" cy="32" r="30" fill="#33505a" />
+      <path d="M16 44 C24 36 30 30 40 20" stroke="#eef3f5" strokeWidth="4" strokeLinecap="round" />
+      <path d="M48 44 C40 36 34 30 24 20" stroke="#eef3f5" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="32" cy="32" r="5" fill="#f2c14e" />
+    </svg>
+  );
+}
+
+const SQUADRON_THEME: Record<string, { community: string | null; accent: string; Icon: (props: { size?: number }) => ReactNode }> = {
+  AGNI: { community: "Rajput", accent: "#7a1f2b", Icon: RajputCrestIcon },
+  BHARAT: { community: "Jat", accent: "#1d6047", Icon: JatCrestIcon },
+  CHARDIKALA: { community: "Sikh", accent: "#0b2e57", Icon: KhandaIcon },
+  JHANGI: { community: null, accent: "#33505a", Icon: CavalrySaberIcon },
+};
+
+function SquadronBadge({ squadron, size = 48, showLabel = true }: { squadron: string; size?: number; showLabel?: boolean }) {
+  const theme = SQUADRON_THEME[squadron];
+  if (!theme) return null;
+  const Icon = theme.Icon;
+  return <div className="flex items-center gap-3"><Icon size={size} />{showLabel && <div><p className="text-sm font-black" style={{ color: theme.accent }}>{squadron}</p>{theme.community && <p className="text-[10px] font-bold uppercase tracking-wider text-[#8aa095]">{theme.community} squadron</p>}</div>}</div>;
+}
 
 function LeaveBalance({ type, remaining }: { type: "AL" | "CL"; remaining?: number }) {
   const total = LEAVE_ALLOWANCES[type];
@@ -97,11 +162,12 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   const [menu, setMenu] = useState(false);
   const [leave, setLeave] = useState<Leave[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [tdy, setTdy] = useState<TDY[]>([]);
   const [notice, setNotice] = useState("");
-  useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]);
-  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }];
-  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+  useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse, tdyResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); if (tdyResponse.ok) setTdy((await tdyResponse.json()).temporaryDuty ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]);
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 function AIAssistant({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
@@ -359,20 +425,62 @@ function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]
   }) : <Empty text="No leave records yet." />}</Panel></div></>;
 }
 
-function Overview({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
+function TdyForm({ account, tdy, onAdded }: { account: Account; tdy: TDY[]; onAdded: (record: TDY) => void }) {
+  const [form, setForm] = useState({ reason: "", location: "", fromDate: "", toDate: "" });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(api("/api/temporary-duty"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, serviceNumber: account.serviceNumber })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        onAdded(data.temporaryDuty);
+        setForm({ reason: "", location: "", fromDate: "", toDate: "" });
+      } else {
+        setError(data.error || "Unable to save temporary duty record.");
+      }
+    } catch (err) {
+      setError("Unable to connect to server.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <><Intro title="Temporary duty / course" detail="Record any temporary duty or course period away from the squadron." /><div className="grid gap-6 xl:grid-cols-2"><form onSubmit={submit}><Panel title="Add temporary duty / course" icon={Briefcase}><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Field label="Reason of temporary duty / course" value={form.reason} onChange={(value) => set("reason", value)} /></div><div className="sm:col-span-2"><Field label="Location" value={form.location} onChange={(value) => set("location", value)} /></div><DateInput label="From" value={form.fromDate} onChange={(value) => set("fromDate", value)} /><DateInput label="To" value={form.toDate} onChange={(value) => set("toDate", value)} /></div>{error && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}<button disabled={submitting} className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting ? "Saving..." : "Save record"}</button></Panel></form><Panel title="Temporary duty / course history" icon={ClipboardList}>{tdy.length ? tdy.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#f5f9f6] p-3"><b className="text-sm font-bold">{item.reason}</b><small className="block text-xs font-normal text-[#829c8f]">{item.location} · {item.from} to {item.to}</small></div>) : <Empty text="No temporary duty / course records yet." />}</Panel></div></>;
+}
+
+function TdyBoard({ tdy }: { tdy: TDY[] }) {
+  const [search, setSearch] = useState("");
+  const filtered = tdy.filter((item) => `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase()));
+  return <><Intro title="Temporary duty / course" detail="Personnel currently away from the squadron on temporary duty or a course, across your command." /><Panel title={`${filtered.length} temporary duty / course records`} icon={Briefcase}><label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>{filtered.length ? filtered.map((item) => <div key={item.id} className="mb-3 flex flex-col gap-2 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between"><div><b>{item.name ?? "Personnel name unavailable"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b><p className="mt-1 text-xs text-[#789489]">{item.rank} · {item.squadron} · {item.reason}</p><p className="mt-1 text-xs font-semibold text-[#287052]">{item.location} · {item.from} to {item.to}</p></div></div>) : <Empty text="No temporary duty / course records found." />}</Panel></>;
+}
+
+function Overview({ account, leave, people, tdy }: { account: Account; leave: Leave[]; people: Person[]; tdy: TDY[] }) {
   const today = calendarDate();
   const tomorrowDate = new Date();
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrow = calendarDate(tomorrowDate);
   const onLeaveRecords = leave.filter((item) => item.status === "Approved" && item.from <= today && item.reportingDate > today);
+  const onTdyRecords = tdy.filter((item) => item.from <= today && item.to >= today);
   const returning = onLeaveRecords.filter((item) => item.reportingDate === tomorrow);
   const onLeave = onLeaveRecords.length;
+  const onTdy = onTdyRecords.length;
   const squadrons = account.role === "ADJT" ? SQUADRONS : [account.squadron];
-  return <><Intro title="Command overview" detail={account.role === "SDM" ? `${account.squadron} squadron strength and leave picture.` : "All four squadrons in one operating picture."} />{returning.length > 0 && <Panel title={`Returning tomorrow · ${returning.length}`} icon={Bell}><p className="mb-4 text-sm text-[#789489]">Personnel due to report back tomorrow.</p><div className="space-y-2">{returning.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#fff6e2] p-3"><div><p className="font-bold text-[#5d4720]">{item.name ?? "Personnel name unavailable"}</p><p className="text-xs text-[#8d6725]">{item.rank} · {item.squadron} · {item.armyNo}</p></div><span className="text-xs font-bold text-[#8d6725]">Return {item.reportingDate}</span></div>)}</div></Panel>}<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total strength" value={String(people.length)} icon={Users} /><Metric label="Available" value={String(Math.max(0, people.length - onLeave))} icon={ShieldCheck} /><Metric label="Leave strength" value={String(onLeave)} icon={CalendarDays} /><Metric label="Return tomorrow" value={String(returning.length)} icon={Bell} /></div><div className="mt-6 grid gap-6 xl:grid-cols-3"><Panel title={account.role === "ADJT" ? "All squadron state" : `${account.squadron} squadron state`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[440px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Squadron</th><th className="pb-3">Strength</th><th className="pb-3">On leave</th><th className="pb-3">Available</th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{squadrons.map((squadron) => { const strength = people.filter((person) => person.squadron === squadron).length; const leaveStrength = onLeaveRecords.filter((item) => item.squadron === squadron).length; return <tr key={squadron}><td className="py-3 font-bold">{squadron}</td><td className="py-3">{strength}</td><td className="py-3">{leaveStrength}</td><td className="py-3">{Math.max(0, strength - leaveStrength)}</td></tr>; })}</tbody></table></div></Panel><Panel title={`Personnel on leave · ${onLeave}`} icon={CalendarDays}>{onLeaveRecords.length ? onLeaveRecords.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#eef7f0] p-3"><p className="font-bold text-[#214a38]">{item.name ?? "Personnel name unavailable"}</p><p className="mt-1 text-xs text-[#58786a]">{item.rank} · {item.squadron} · {item.armyNo}</p><p className="mt-1 text-xs text-[#58786a]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</p></div>) : <Empty text="No personnel are currently on leave." />}</Panel><Panel title="Leave activity" icon={ClipboardList}>{leave.length ? leave.slice(0, 8).map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.name ?? "Personnel name unavailable"}<small className="block text-xs font-normal text-[#829c8f]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records found." />}</Panel></div></>;
+  return <><Intro title="Command overview" detail={account.role === "SDM" ? `${account.squadron} squadron strength and leave picture.` : "All four squadrons in one operating picture."} />{account.role === "ADJT" ? <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{SQUADRONS.map((squadron) => <div key={squadron} className="rounded-2xl border border-[#d8e5dc] bg-white p-4"><SquadronBadge squadron={squadron} size={40} /></div>)}</div> : <div className="mb-6 rounded-2xl border border-[#d8e5dc] bg-white p-4"><SquadronBadge squadron={account.squadron} size={48} /></div>}{returning.length > 0 && <Panel title={`Returning tomorrow · ${returning.length}`} icon={Bell}><p className="mb-4 text-sm text-[#789489]">Personnel due to report back tomorrow.</p><div className="space-y-2">{returning.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#fff6e2] p-3"><div><p className="font-bold text-[#5d4720]">{item.name ?? "Personnel name unavailable"}</p><p className="text-xs text-[#8d6725]">{item.rank} · {item.squadron} · {item.armyNo}</p></div><span className="text-xs font-bold text-[#8d6725]">Return {item.reportingDate}</span></div>)}</div></Panel>}<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Total strength" value={String(people.length)} icon={Users} /><Metric label="Available" value={String(Math.max(0, people.length - onLeave - onTdy))} icon={ShieldCheck} /><Metric label="Leave strength" value={String(onLeave)} icon={CalendarDays} /><Metric label="Temporary duty" value={String(onTdy)} icon={Briefcase} /><Metric label="Return tomorrow" value={String(returning.length)} icon={Bell} /></div><div className="mt-6 grid gap-6 xl:grid-cols-3"><Panel title={account.role === "ADJT" ? "All squadron state" : `${account.squadron} squadron state`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Squadron</th><th className="pb-3">Strength</th><th className="pb-3">On leave</th><th className="pb-3">On TDY</th><th className="pb-3">Available</th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{squadrons.map((squadron) => { const strength = people.filter((person) => person.squadron === squadron).length; const leaveStrength = onLeaveRecords.filter((item) => item.squadron === squadron).length; const tdyStrength = onTdyRecords.filter((item) => item.squadron === squadron).length; return <tr key={squadron}><td className="py-3 font-bold">{squadron}</td><td className="py-3">{strength}</td><td className="py-3">{leaveStrength}</td><td className="py-3">{tdyStrength}</td><td className="py-3">{Math.max(0, strength - leaveStrength - tdyStrength)}</td></tr>; })}</tbody></table></div></Panel><Panel title={`Personnel on leave · ${onLeave}`} icon={CalendarDays}>{onLeaveRecords.length ? onLeaveRecords.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#eef7f0] p-3"><p className="font-bold text-[#214a38]">{item.name ?? "Personnel name unavailable"}</p><p className="mt-1 text-xs text-[#58786a]">{item.rank} · {item.squadron} · {item.armyNo}</p><p className="mt-1 text-xs text-[#58786a]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</p></div>) : <Empty text="No personnel are currently on leave." />}</Panel><Panel title={`Personnel on temporary duty / course · ${onTdy}`} icon={Briefcase}>{onTdyRecords.length ? onTdyRecords.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#eef4f7] p-3"><p className="font-bold text-[#1e4a5f]">{item.name ?? "Personnel name unavailable"}</p><p className="mt-1 text-xs text-[#5a7c8a]">{item.rank} · {item.squadron} · {item.armyNo}</p><p className="mt-1 text-xs text-[#5a7c8a]">{item.reason} · {item.location} · {item.from} to {item.to}</p></div>) : <Empty text="No personnel are currently on temporary duty / course." />}</Panel></div><div className="mt-6"><Panel title="Leave activity" icon={ClipboardList}>{leave.length ? leave.slice(0, 8).map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.name ?? "Personnel name unavailable"}<small className="block text-xs font-normal text-[#829c8f]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records found." />}</Panel></div></>;
 }
 function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Users }) { return <div className="rounded-2xl border border-[#d8e5dc] bg-white p-5"><Icon className="mb-5 text-[#39835d]" size={20} /><p className="text-3xl font-black">{value}</p><p className="mt-1 text-xs font-bold uppercase tracking-wider text-[#8aa095]">{label}</p></div>; }
-function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; leave: Leave[]; people: Person[]; onUpdated: (leave: Leave) => void }) {
+function LeaveBoard({ account, leave, people, tdy, onUpdated }: { account: Account; leave: Leave[]; people: Person[]; tdy: TDY[]; onUpdated: (leave: Leave) => void }) {
   const [search, setSearch] = useState("");
+  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const today = calendarDate();
   const visible = leave.filter((item) => item.reportingDate > today && `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase()));
   const pendingLeaves = visible.filter((item) => item.status !== "Approved" && item.status !== "Rejected");
@@ -389,14 +497,20 @@ function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; l
       if (!existing || item.reportingDate > existing.reportingDate) lastReturnedByArmyNo.set(item.armyNo, item);
     }
   }
-  const roster = [...people].sort((a, b) => {
-    const onLeaveA = onLeaveByArmyNo.get(a.serviceNumber);
-    const onLeaveB = onLeaveByArmyNo.get(b.serviceNumber);
-    if (onLeaveA && onLeaveB) return onLeaveA.reportingDate.localeCompare(onLeaveB.reportingDate);
-    if (onLeaveA) return -1;
-    if (onLeaveB) return 1;
-    return a.fullName.localeCompare(b.fullName);
-  });
+  const onTdyByArmyNo = new Map<string, TDY>();
+  for (const item of tdy) { if (item.armyNo && item.from <= today && item.to >= today) onTdyByArmyNo.set(item.armyNo, item); }
+  const roster = [...people]
+    .filter((person) => `${person.fullName} ${person.serviceNumber} ${person.squadron}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const onLeaveA = onLeaveByArmyNo.get(a.serviceNumber);
+      const onLeaveB = onLeaveByArmyNo.get(b.serviceNumber);
+      if (onLeaveA && onLeaveB) return onLeaveA.reportingDate.localeCompare(onLeaveB.reportingDate);
+      if (onLeaveA) return -1;
+      if (onLeaveB) return 1;
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+  if (selectedPerson) return <IndividualLeaveDetail person={selectedPerson} leave={leave.filter((item) => item.armyNo === selectedPerson.serviceNumber)} tdy={tdy.filter((item) => item.armyNo === selectedPerson.serviceNumber)} onBack={() => setSelectedPerson(null)} />;
 
   async function decide(id: string, action: "approve" | "reject") { 
     const response = await fetch(api("/api/leave"), { 
@@ -420,6 +534,7 @@ function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; l
     <Intro title="Leave board" detail="Review and approve current/upcoming leave and modification requests across your command. Personnel are removed automatically on their reporting date." />
 
     <Panel title={account.role === "ADJT" ? `Squadron roster · ${roster.length}` : `${account.squadron} roster · ${roster.length}`} icon={Users}>
+      <label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name or army no." className="w-full bg-transparent outline-none" /></label>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]">
@@ -428,25 +543,28 @@ function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; l
               {account.role === "ADJT" && <th className="pb-3 pr-4">Squadron</th>}
               <th className="pb-3 pr-4">Status</th>
               <th className="pb-3 pr-4">AL left</th>
-              <th className="pb-3">CL left</th>
+              <th className="pb-3 pr-4">CL left</th>
+              <th className="pb-3"><span className="sr-only">View</span></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#edf2ee]">
             {roster.map((person) => {
               const onLeaveRecord = onLeaveByArmyNo.get(person.serviceNumber);
-              const lastReturned = !onLeaveRecord ? lastReturnedByArmyNo.get(person.serviceNumber) : undefined;
+              const onTdyRecord = !onLeaveRecord ? onTdyByArmyNo.get(person.serviceNumber) : undefined;
+              const lastReturned = !onLeaveRecord && !onTdyRecord ? lastReturnedByArmyNo.get(person.serviceNumber) : undefined;
               const al = person.annualLeaveBalance ?? LEAVE_ALLOWANCES.AL;
               const cl = person.casualLeaveBalance ?? LEAVE_ALLOWANCES.CL;
               return (
-                <tr key={person.id}>
+                <tr key={person.id} onClick={() => setSelectedPerson(person)} className="cursor-pointer hover:bg-[#f5f9f6]">
                   <td className="py-3 pr-4">
                     <b>{person.fullName}</b> <small className="font-normal text-[#8aa095]">{person.rank} · {person.serviceNumber}</small>
                     {lastReturned && <small className="mt-1 block text-xs font-semibold text-[#8d6725]">Returned · {lastReturned.type} · {lastReturned.requestedDays} days</small>}
                   </td>
                   {account.role === "ADJT" && <td className="py-3 pr-4">{person.squadron}</td>}
-                  <td className="py-3 pr-4">{onLeaveRecord ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On leave · Returns {onLeaveRecord.reportingDate}</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}</td>
+                  <td className="py-3 pr-4">{onLeaveRecord ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On leave · Returns {onLeaveRecord.reportingDate}</span> : onTdyRecord ? <span className="rounded-full bg-[#e4edf7] px-3 py-1.5 text-[11px] font-bold text-[#3b6ea5]">On TDY · Returns {onTdyRecord.to}</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}</td>
                   <td className={`py-3 pr-4 font-bold ${al <= 0 ? "text-[#ad5652]" : "text-[#214a38]"}`}>{al <= 0 ? "Finished" : al}</td>
-                  <td className={`py-3 font-bold ${cl <= 0 ? "text-[#ad5652]" : "text-[#214a38]"}`}>{cl <= 0 ? "Finished" : cl}</td>
+                  <td className={`py-3 pr-4 font-bold ${cl <= 0 ? "text-[#ad5652]" : "text-[#214a38]"}`}>{cl <= 0 ? "Finished" : cl}</td>
+                  <td className="py-3 text-right"><ChevronRight size={16} className="text-[#8aa095]" /></td>
                 </tr>
               );
             })}
@@ -486,7 +604,6 @@ function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; l
     )}
 
     <Panel title={`${pendingLeaves.length} pending leave requests`} icon={ClipboardList}>
-      <label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>
       {pendingLeaves.length ? pendingLeaves.map((item) => (
         <div key={item.id} className="mb-3 flex flex-col gap-3 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -505,6 +622,40 @@ function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; l
     </Panel>
   </>;
 }
+
+function IndividualLeaveDetail({ person, leave, tdy, onBack }: { person: Person; leave: Leave[]; tdy: TDY[]; onBack: () => void }) {
+  const sortedLeave = [...leave].sort((a, b) => b.from.localeCompare(a.from));
+  const sortedTdy = [...tdy].sort((a, b) => b.from.localeCompare(a.from));
+  const al = person.annualLeaveBalance ?? LEAVE_ALLOWANCES.AL;
+  const cl = person.casualLeaveBalance ?? LEAVE_ALLOWANCES.CL;
+  return <>
+    <button type="button" onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-bold text-[#287052]"><ChevronLeft size={17} />Back to roster</button>
+    <Intro title={person.fullName} detail={`${person.rank} · ${person.serviceNumber} · ${person.squadron} squadron`} />
+    <div className="mb-6 grid gap-4 sm:grid-cols-2"><LeaveBalance type="AL" remaining={al} /><LeaveBalance type="CL" remaining={cl} /></div>
+    <div className="grid gap-6 xl:grid-cols-2">
+      <Panel title={`Leave log · ${sortedLeave.length}`} icon={ClipboardList}>
+        {sortedLeave.length ? sortedLeave.map((item) => (
+          <div key={item.id} className="mb-3 rounded-xl bg-[#f5f9f6] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-bold">{item.type} · {item.from} to {item.to}<small className="block text-xs font-normal text-[#829c8f]">{item.requestedDays ?? "-"} days · Return {item.reportingDate}</small></span>
+              <Status value={item.status} />
+            </div>
+            {item.amendment && <small className="mt-2 block text-xs font-semibold text-[#8d6725]">Amendment: {item.amendment.from} to {item.amendment.to} ({item.amendment.status})</small>}
+          </div>
+        )) : <Empty text="No leave records for this individual." />}
+      </Panel>
+      <Panel title={`Temporary duty / course log · ${sortedTdy.length}`} icon={Briefcase}>
+        {sortedTdy.length ? sortedTdy.map((item) => (
+          <div key={item.id} className="mb-3 rounded-xl bg-[#f5f9f6] p-3">
+            <b className="text-sm font-bold">{item.reason}</b>
+            <small className="block text-xs font-normal text-[#829c8f]">{item.location} · {item.from} to {item.to}</small>
+          </div>
+        )) : <Empty text="No temporary duty / course records for this individual." />}
+      </Panel>
+    </div>
+  </>;
+}
+
 function People({ people }: { people: Person[] }) { const [selected, setSelected] = useState<Person | null>(null); if (selected) return <PersonDetail person={selected} onBack={() => setSelected(null)} />; return <><Intro title="All personnel" detail="Select a person to view their personal, medical, course, posting, honour, vaccination, and BPET/PPT records." /><Panel title={`${people.length} personnel records`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Personnel</th><th className="pb-3">Rank / trade</th><th className="pb-3">Squadron</th><th className="pb-3"><span className="sr-only">View</span></th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{people.map((person) => <tr key={person.id} className="hover:bg-[#f5f9f6]"><td className="py-4"><b>{person.fullName}</b><small className="block text-xs text-[#8aa095]">{person.serviceNumber}</small></td><td className="py-4">{person.rank}<small className="block text-xs text-[#8aa095]">{person.trade}</small></td><td className="py-4">{person.squadron}</td><td className="py-4 text-right"><button type="button" onClick={() => setSelected(person)} className="border border-[#bcd8c6] p-2 text-[#287052] hover:bg-[#e5f3e9]" aria-label={`View ${person.fullName}`}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{!people.length && <Empty text="No personnel records found." />}</div></Panel></>; }
 
 function PersonDetail({ person, onBack }: { person: Person; onBack: () => void }) { const [tab, setTab] = useState("personal"); const metadata = person.metadata ?? {}; const military = metadata.military ?? {}; const medical = metadata.medical ?? {}; const fitness = metadata.fitness ?? {}; const courses = legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }); const postings = legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }); const honours = legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }); const medicalHistory = legacyRows(metadata.medicalHistory, medicalHistoryColumns, { condition: medical.chronicConditions ?? "", treatment: medical.medications ?? "", remarks: medical.surgeries ?? "" }); const medicalExams = legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }); const vaccinations = legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }); const bpetPpt = legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }); const tabs = [{ id: "personal", text: "Personal" }, { id: "medical", text: "Medical" }, { id: "courses", text: "Courses & qualifications" }, { id: "fitness", text: "BPET & PPT" }]; const personalRows = [{ label: "Army / service no.", value: person.serviceNumber }, { label: "Rank", value: person.rank }, { label: "Arm / service", value: person.trade }, { label: "Hometown / address", value: person.hometown }, { label: "Parent unit", value: military.parentUnit ?? "-" }, { label: "Present unit", value: military.presentUnit ?? "-" }, { label: "Date of enrolment", value: military.dateOfEnrolment ?? "-" }, { label: "Security clearance", value: military.securityClearance ?? "-" }]; return <><button type="button" onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-bold text-[#287052]"><ChevronLeft size={17} />All personnel</button><Intro title={person.fullName} detail={`${person.rank} · ${person.serviceNumber} · ${person.squadron} squadron`} /><div className="mb-6 flex flex-wrap gap-2 border-b border-[#d8e5dc] pb-4">{tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`px-3 py-2 text-xs font-bold ${tab === item.id ? "bg-[#1d6047] text-white" : "border border-[#cbded1] text-[#527363]"}`}>{item.text}</button>)}</div>{tab === "personal" && <Panel title="Personal details" icon={UserRound}><table className="w-full text-left text-sm"><tbody className="divide-y divide-[#edf2ee]">{personalRows.map((row) => <tr key={row.label}><th className="w-1/3 py-3 text-xs uppercase tracking-wider text-[#789489]">{row.label}</th><td className="py-3 font-semibold">{row.value}</td></tr>)}</tbody></table></Panel>}{tab === "medical" && <div className="grid gap-6"><RecordTable title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} /><RecordTable title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} /><RecordTable title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} /></div>}{tab === "courses" && <div className="grid gap-6"><RecordTable title="Courses & qualifications" columns={courseColumns} rows={courses} /><RecordTable title="Postings & deployments" columns={postingColumns} rows={postings} /><RecordTable title="Honours & decorations" columns={honourColumns} rows={honours} /></div>}{tab === "fitness" && <RecordTable title="BPET / PPT results" columns={fitnessColumns} rows={bpetPpt} />}</>; }

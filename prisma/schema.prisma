@@ -66,8 +66,9 @@ model Personnel {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  leaveRequests LeaveRequest[]
-  auditLogs     AuditLog[]
+  leaveRequests    LeaveRequest[]
+  auditLogs        AuditLog[]
+  temporaryDuties  TemporaryDuty[]
 
   @@index([squadron])
   @@index([role])
@@ -108,6 +109,23 @@ model LeaveRequest {
   @@index([personnelId])
   @@index([squadron, status])
   @@index([reportingDate])
+}
+
+model TemporaryDuty {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  personnelId String    @db.ObjectId
+  personnel   Personnel @relation(fields: [personnelId], references: [id])
+  squadron    Squadron
+  reason      String
+  location    String
+  fromDate    DateTime
+  toDate      DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([personnelId])
+  @@index([squadron])
+  @@index([toDate])
 }
 
 model AuditLog {
