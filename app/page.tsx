@@ -101,7 +101,7 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]);
   const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }];
   const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 function AIAssistant({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
@@ -371,13 +371,33 @@ function Overview({ account, leave, people }: { account: Account; leave: Leave[]
   return <><Intro title="Command overview" detail={account.role === "SDM" ? `${account.squadron} squadron strength and leave picture.` : "All four squadrons in one operating picture."} />{returning.length > 0 && <Panel title={`Returning tomorrow · ${returning.length}`} icon={Bell}><p className="mb-4 text-sm text-[#789489]">Personnel due to report back tomorrow.</p><div className="space-y-2">{returning.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#fff6e2] p-3"><div><p className="font-bold text-[#5d4720]">{item.name ?? "Personnel name unavailable"}</p><p className="text-xs text-[#8d6725]">{item.rank} · {item.squadron} · {item.armyNo}</p></div><span className="text-xs font-bold text-[#8d6725]">Return {item.reportingDate}</span></div>)}</div></Panel>}<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total strength" value={String(people.length)} icon={Users} /><Metric label="Available" value={String(Math.max(0, people.length - onLeave))} icon={ShieldCheck} /><Metric label="Leave strength" value={String(onLeave)} icon={CalendarDays} /><Metric label="Return tomorrow" value={String(returning.length)} icon={Bell} /></div><div className="mt-6 grid gap-6 xl:grid-cols-3"><Panel title={account.role === "ADJT" ? "All squadron state" : `${account.squadron} squadron state`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[440px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Squadron</th><th className="pb-3">Strength</th><th className="pb-3">On leave</th><th className="pb-3">Available</th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{squadrons.map((squadron) => { const strength = people.filter((person) => person.squadron === squadron).length; const leaveStrength = onLeaveRecords.filter((item) => item.squadron === squadron).length; return <tr key={squadron}><td className="py-3 font-bold">{squadron}</td><td className="py-3">{strength}</td><td className="py-3">{leaveStrength}</td><td className="py-3">{Math.max(0, strength - leaveStrength)}</td></tr>; })}</tbody></table></div></Panel><Panel title={`Personnel on leave · ${onLeave}`} icon={CalendarDays}>{onLeaveRecords.length ? onLeaveRecords.map((item) => <div key={item.id} className="mb-3 rounded-xl bg-[#eef7f0] p-3"><p className="font-bold text-[#214a38]">{item.name ?? "Personnel name unavailable"}</p><p className="mt-1 text-xs text-[#58786a]">{item.rank} · {item.squadron} · {item.armyNo}</p><p className="mt-1 text-xs text-[#58786a]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</p></div>) : <Empty text="No personnel are currently on leave." />}</Panel><Panel title="Leave activity" icon={ClipboardList}>{leave.length ? leave.slice(0, 8).map((item) => <div key={item.id} className="mb-3 flex items-center justify-between rounded-xl bg-[#f5f9f6] p-3"><span className="text-sm font-bold">{item.name ?? "Personnel name unavailable"}<small className="block text-xs font-normal text-[#829c8f]">{item.type} · {item.from} to {item.to} · Return {item.reportingDate}</small></span><Status value={item.status} /></div>) : <Empty text="No leave records found." />}</Panel></div></>;
 }
 function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Users }) { return <div className="rounded-2xl border border-[#d8e5dc] bg-white p-5"><Icon className="mb-5 text-[#39835d]" size={20} /><p className="text-3xl font-black">{value}</p><p className="mt-1 text-xs font-bold uppercase tracking-wider text-[#8aa095]">{label}</p></div>; }
-function LeaveBoard({ account, leave, onUpdated }: { account: Account; leave: Leave[]; onUpdated: (leave: Leave) => void }) {
+function LeaveBoard({ account, leave, people, onUpdated }: { account: Account; leave: Leave[]; people: Person[]; onUpdated: (leave: Leave) => void }) {
   const [search, setSearch] = useState("");
   const today = calendarDate();
   const visible = leave.filter((item) => item.reportingDate > today && `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase()));
   const pendingLeaves = visible.filter((item) => item.status !== "Approved" && item.status !== "Rejected");
   const amendmentRequests = visible.filter((item) => item.amendment && item.amendment.status !== "APPROVED" && item.amendment.status !== "REJECTED");
-  
+
+  const onLeaveByArmyNo = new Map<string, Leave>();
+  const lastReturnedByArmyNo = new Map<string, Leave>();
+  for (const item of leave) {
+    if (!item.armyNo || item.status !== "Approved") continue;
+    if (item.from <= today && item.reportingDate > today) {
+      onLeaveByArmyNo.set(item.armyNo, item);
+    } else if (item.reportingDate <= today) {
+      const existing = lastReturnedByArmyNo.get(item.armyNo);
+      if (!existing || item.reportingDate > existing.reportingDate) lastReturnedByArmyNo.set(item.armyNo, item);
+    }
+  }
+  const roster = [...people].sort((a, b) => {
+    const onLeaveA = onLeaveByArmyNo.get(a.serviceNumber);
+    const onLeaveB = onLeaveByArmyNo.get(b.serviceNumber);
+    if (onLeaveA && onLeaveB) return onLeaveA.reportingDate.localeCompare(onLeaveB.reportingDate);
+    if (onLeaveA) return -1;
+    if (onLeaveB) return 1;
+    return a.fullName.localeCompare(b.fullName);
+  });
+
   async function decide(id: string, action: "approve" | "reject") { 
     const response = await fetch(api("/api/leave"), { 
       method: "PATCH", 
@@ -398,7 +418,44 @@ function LeaveBoard({ account, leave, onUpdated }: { account: Account; leave: Le
 
   return <>
     <Intro title="Leave board" detail="Review and approve current/upcoming leave and modification requests across your command. Personnel are removed automatically on their reporting date." />
-    
+
+    <Panel title={account.role === "ADJT" ? `Squadron roster · ${roster.length}` : `${account.squadron} roster · ${roster.length}`} icon={Users}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]">
+            <tr>
+              <th className="pb-3 pr-4">Personnel</th>
+              {account.role === "ADJT" && <th className="pb-3 pr-4">Squadron</th>}
+              <th className="pb-3 pr-4">Status</th>
+              <th className="pb-3 pr-4">AL left</th>
+              <th className="pb-3">CL left</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#edf2ee]">
+            {roster.map((person) => {
+              const onLeaveRecord = onLeaveByArmyNo.get(person.serviceNumber);
+              const lastReturned = !onLeaveRecord ? lastReturnedByArmyNo.get(person.serviceNumber) : undefined;
+              const al = person.annualLeaveBalance ?? LEAVE_ALLOWANCES.AL;
+              const cl = person.casualLeaveBalance ?? LEAVE_ALLOWANCES.CL;
+              return (
+                <tr key={person.id}>
+                  <td className="py-3 pr-4">
+                    <b>{person.fullName}</b> <small className="font-normal text-[#8aa095]">{person.rank} · {person.serviceNumber}</small>
+                    {lastReturned && <small className="mt-1 block text-xs font-semibold text-[#8d6725]">Returned · {lastReturned.type} · {lastReturned.requestedDays} days</small>}
+                  </td>
+                  {account.role === "ADJT" && <td className="py-3 pr-4">{person.squadron}</td>}
+                  <td className="py-3 pr-4">{onLeaveRecord ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On leave · Returns {onLeaveRecord.reportingDate}</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}</td>
+                  <td className={`py-3 pr-4 font-bold ${al <= 0 ? "text-[#ad5652]" : "text-[#214a38]"}`}>{al <= 0 ? "Finished" : al}</td>
+                  <td className={`py-3 font-bold ${cl <= 0 ? "text-[#ad5652]" : "text-[#214a38]"}`}>{cl <= 0 ? "Finished" : cl}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!roster.length && <Empty text="No personnel records found." />}
+      </div>
+    </Panel>
+
     {amendmentRequests.length > 0 && (
       <Panel title={`${amendmentRequests.length} pending leave modification requests`} icon={Bell}>
         <p className="mb-4 text-xs font-semibold text-[#8d6725]">Personnel recalled early requesting to adjust their leave dates. Both SDM and Adjutant approval required.</p>
