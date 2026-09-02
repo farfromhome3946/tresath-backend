@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Filter, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 
 type Role = "PERSONNEL" | "SDM" | "ADJT";
 type TableRow = Record<string, string>;
@@ -16,6 +16,23 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 const api = (path: string) => `${API}${path}`;
 const SQUADRONS = ["AGNI", "BHARAT", "CHARDIKALA", "JHANGI"];
 const LEAVE_ALLOWANCES = { AL: 60, CL: 30 } as const;
+const EDUCATION_LEVELS = ["Below Matric", "Matric", "Higher Secondary", "Diploma", "Graduate", "Post-Graduate", "Doctorate"];
+const RANK_ORDER = ["Sowar", "L Dfr", "Dfr", "Nb Ris", "Ris", "Ris Maj", "Lt", "Capt", "Maj", "Lt Col", "Col", "Brig"];
+
+function rankIndex(rank: string) {
+  return RANK_ORDER.findIndex((candidate) => candidate.toLowerCase() === rank.trim().toLowerCase());
+}
+
+function computeAge(dob?: string) {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const hadBirthdayThisYear = today.getMonth() > birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+  if (!hadBirthdayThisYear) age -= 1;
+  return age;
+}
 
 function RajputCrestIcon({ size = 48 }: { size?: number }) {
   return (
@@ -191,9 +208,9 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
   }, [account.role, account.serviceNumber, account.squadron, command]);
-  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }];
-  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "reports", text: "Make a list", icon: Filter }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", reports: "Make a list", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
@@ -385,7 +402,7 @@ function ProfileSections({ account, section, onSaved }: { account: Account; sect
   const military = metadata.military ?? {};
   const medical = metadata.medical ?? {};
   const fitness = metadata.fitness ?? {};
-  const [personal, setPersonal] = useState({ fullName: account.fullName, rank: account.rank, trade: account.trade, hometown: account.hometown, parentUnit: military.parentUnit ?? "", presentUnit: military.presentUnit ?? "", dateOfBirth: military.dateOfBirth ?? "", dateOfEnrolment: military.dateOfEnrolment ?? "", dateOfPresentRank: military.dateOfPresentRank ?? "", superannuationDate: military.superannuationDate ?? "", totalService: military.totalService ?? "", securityClearance: military.securityClearance ?? "", conductRecord: military.conductRecord ?? "" });
+  const [personal, setPersonal] = useState({ fullName: account.fullName, rank: account.rank, trade: account.trade, hometown: account.hometown, parentUnit: military.parentUnit ?? "", presentUnit: military.presentUnit ?? "", dateOfBirth: military.dateOfBirth ?? "", dateOfEnrolment: military.dateOfEnrolment ?? "", dateOfPresentRank: military.dateOfPresentRank ?? "", superannuationDate: military.superannuationDate ?? "", totalService: military.totalService ?? "", securityClearance: military.securityClearance ?? "", conductRecord: military.conductRecord ?? "", highestDegree: military.highestDegree ?? "", numberOfChildren: military.numberOfChildren ?? "" });
   const [courses, setCourses] = useState(() => legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }));
   const [postings, setPostings] = useState(() => legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }));
   const [honours, setHonours] = useState(() => legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }));
@@ -393,9 +410,9 @@ function ProfileSections({ account, section, onSaved }: { account: Account; sect
   const [medicalExams, setMedicalExams] = useState(() => legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }));
   const [vaccinations, setVaccinations] = useState(() => legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }));
   const [fitnessRows, setFitnessRows] = useState(() => legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }));
-  async function save() { const nextMetadata: ProfileMetadata = { ...metadata, military: { ...military, parentUnit: personal.parentUnit, presentUnit: personal.presentUnit, dateOfBirth: personal.dateOfBirth, dateOfEnrolment: personal.dateOfEnrolment, dateOfPresentRank: personal.dateOfPresentRank, superannuationDate: personal.superannuationDate, totalService: personal.totalService, securityClearance: personal.securityClearance, conductRecord: personal.conductRecord }, courses, postings, honours, medicalHistory, medicalExams, vaccinations, bpetPpt: fitnessRows }; const response = await fetch(api("/api/personnel"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceNumber: account.serviceNumber, ...(section === "personal" ? { fullName: personal.fullName, rank: personal.rank, trade: personal.trade, hometown: personal.hometown } : {}), metadata: nextMetadata }) }); if (response.ok) onSaved((await response.json()).account); }
+  async function save() { const nextMetadata: ProfileMetadata = { ...metadata, military: { ...military, parentUnit: personal.parentUnit, presentUnit: personal.presentUnit, dateOfBirth: personal.dateOfBirth, dateOfEnrolment: personal.dateOfEnrolment, dateOfPresentRank: personal.dateOfPresentRank, superannuationDate: personal.superannuationDate, totalService: personal.totalService, securityClearance: personal.securityClearance, conductRecord: personal.conductRecord, highestDegree: personal.highestDegree, numberOfChildren: personal.numberOfChildren }, courses, postings, honours, medicalHistory, medicalExams, vaccinations, bpetPpt: fitnessRows }; const response = await fetch(api("/api/personnel"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceNumber: account.serviceNumber, ...(section === "personal" ? { fullName: personal.fullName, rank: personal.rank, trade: personal.trade, hometown: personal.hometown } : {}), metadata: nextMetadata }) }); if (response.ok) onSaved((await response.json()).account); }
   const personalField = (label: string, key: keyof typeof personal, type = "text") => <Field label={label} value={personal[key]} onChange={(value) => setPersonal((current) => ({ ...current, [key]: value }))} type={type} required={key === "fullName" || key === "rank" || key === "trade" || key === "hometown"} />;
-  const content = section === "personal" ? <div className="grid gap-6 xl:grid-cols-2"><Panel title="Service profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{personalField("Full name", "fullName")}<div className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Army / service no.</span><p className="border border-[#d8e3dc] bg-[#f5f9f6] px-4 py-3 text-sm font-semibold">{account.serviceNumber}</p></div>{personalField("Rank", "rank")}{personalField("Arm / service", "trade")}{personalField("Parent unit", "parentUnit")}{personalField("Present unit", "presentUnit")}{personalField("Date of birth", "dateOfBirth", "date")}{personalField("Hometown / address", "hometown")}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Date of enrolment / commission", "dateOfEnrolment", "date")}{personalField("Date of present rank", "dateOfPresentRank", "date")}{personalField("Total length of service", "totalService")}{personalField("Superannuation date", "superannuationDate", "date")}{personalField("Security clearance", "securityClearance")}{personalField("Conduct / ACR summary", "conductRecord")}</div></Panel></div> : section === "medical" ? <div className="grid gap-6"><RecordTableEditor title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} onChange={setMedicalHistory} /><RecordTableEditor title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} onChange={setMedicalExams} /><RecordTableEditor title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} onChange={setVaccinations} /></div> : section === "courses" ? <div className="grid gap-6"><RecordTableEditor title="Courses & qualifications" columns={courseColumns} rows={courses} onChange={setCourses} /><RecordTableEditor title="Postings & deployments" columns={postingColumns} rows={postings} onChange={setPostings} /><RecordTableEditor title="Honours & decorations" columns={honourColumns} rows={honours} onChange={setHonours} /></div> : <RecordTableEditor title="BPET / PPT results" columns={fitnessColumns} rows={fitnessRows} onChange={setFitnessRows} />;
+  const content = section === "personal" ? <div className="grid gap-6 xl:grid-cols-2"><Panel title="Service profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{personalField("Full name", "fullName")}<div className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Army / service no.</span><p className="border border-[#d8e3dc] bg-[#f5f9f6] px-4 py-3 text-sm font-semibold">{account.serviceNumber}</p></div>{personalField("Rank", "rank")}{personalField("Arm / service", "trade")}{personalField("Parent unit", "parentUnit")}{personalField("Present unit", "presentUnit")}{personalField("Date of birth", "dateOfBirth", "date")}{personalField("Hometown / address", "hometown")}<Select label="Highest degree achieved" value={personal.highestDegree} options={["", ...EDUCATION_LEVELS]} onChange={(value) => setPersonal((current) => ({ ...current, highestDegree: value }))} />{personalField("Number of children", "numberOfChildren", "number")}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Date of enrolment / commission", "dateOfEnrolment", "date")}{personalField("Date of present rank", "dateOfPresentRank", "date")}{personalField("Total length of service", "totalService")}{personalField("Superannuation date", "superannuationDate", "date")}{personalField("Security clearance", "securityClearance")}{personalField("Conduct / ACR summary", "conductRecord")}</div></Panel></div> : section === "medical" ? <div className="grid gap-6"><RecordTableEditor title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} onChange={setMedicalHistory} /><RecordTableEditor title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} onChange={setMedicalExams} /><RecordTableEditor title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} onChange={setVaccinations} /></div> : section === "courses" ? <div className="grid gap-6"><RecordTableEditor title="Courses & qualifications" columns={courseColumns} rows={courses} onChange={setCourses} /><RecordTableEditor title="Postings & deployments" columns={postingColumns} rows={postings} onChange={setPostings} /><RecordTableEditor title="Honours & decorations" columns={honourColumns} rows={honours} onChange={setHonours} /></div> : <RecordTableEditor title="BPET / PPT results" columns={fitnessColumns} rows={fitnessRows} onChange={setFitnessRows} />;
   const detail = section === "personal" ? "Maintain core service and personal information." : section === "medical" ? "Keep a dated history of medical care, examinations, and vaccinations." : section === "courses" ? "Add each course, posting, and honour as its own record." : "Record every BPET and PPT assessment separately.";
   return <><Intro title={section === "personal" ? "Personal details" : section === "medical" ? "Medical details" : section === "courses" ? "Courses & qualifications" : "BPET & PPT results"} detail={detail} />{content}<button type="button" onClick={() => void save()} className="mt-6 bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save {section === "personal" ? "details" : "records"}</button></>;
 }
@@ -749,6 +766,80 @@ function IndividualLeaveDetail({ person, leave, tdy, onBack }: { person: Person;
         )) : <Empty text="No temporary duty / course records for this individual." />}
       </Panel>
     </div>
+  </>;
+}
+
+function ListBuilder({ account, people, leave, tdy }: { account: Account; people: Person[]; leave: Leave[]; tdy: TDY[] }) {
+  const [filters, setFilters] = useState({ minAge: "", maxAge: "", education: "ANY", rankAbove: "ANY", status: "ANY" });
+  const set = (key: keyof typeof filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const today = calendarDate();
+
+  const onLeaveByArmyNo = new Map<string, Leave>();
+  for (const item of leave) { if (item.armyNo && item.status === "Approved" && item.from <= today && item.reportingDate > today) onLeaveByArmyNo.set(item.armyNo, item); }
+  const onTdyByArmyNo = new Map<string, TDY>();
+  for (const item of tdy) { if (item.armyNo && item.from <= today && item.to >= today) onTdyByArmyNo.set(item.armyNo, item); }
+
+  const minEducationRank = filters.education === "ANY" ? -1 : EDUCATION_LEVELS.indexOf(filters.education);
+  const rankThreshold = filters.rankAbove === "ANY" ? -1 : rankIndex(filters.rankAbove);
+
+  const rows = people.map((person) => {
+    const military = person.metadata?.military ?? {};
+    const age = computeAge(military.dateOfBirth);
+    const highestDegree = military.highestDegree || "-";
+    const numberOfChildren = military.numberOfChildren || "0";
+    const onLeave = onLeaveByArmyNo.get(person.serviceNumber);
+    const onTdy = onTdyByArmyNo.get(person.serviceNumber);
+    const status = onLeave ? "On leave" : onTdy ? "On TDY" : "Available";
+    return { person, age, highestDegree, numberOfChildren, status };
+  }).filter(({ person, age, highestDegree, status }) => {
+    if (filters.minAge !== "" && (age === null || age < Number(filters.minAge))) return false;
+    if (filters.maxAge !== "" && (age === null || age > Number(filters.maxAge))) return false;
+    if (filters.education !== "ANY") { const rank = EDUCATION_LEVELS.indexOf(highestDegree); if (rank < 0 || rank < minEducationRank) return false; }
+    if (filters.rankAbove !== "ANY") { const rank = rankIndex(person.rank); if (rank < 0 || rank <= rankThreshold) return false; }
+    if (filters.status !== "ANY" && status !== filters.status) return false;
+    return true;
+  });
+
+  return <>
+    <Intro title="Make a list" detail="Build a custom personnel list by age, education, rank, and current status." />
+    <Panel title="Filters" icon={Filter}>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Field label="Min age" value={filters.minAge} onChange={(value) => set("minAge", value)} type="number" required={false} />
+        <Field label="Max age" value={filters.maxAge} onChange={(value) => set("maxAge", value)} type="number" required={false} />
+        <Select label="Education (this level & above)" value={filters.education} options={["ANY", ...EDUCATION_LEVELS]} onChange={(value) => set("education", value)} />
+        <Select label="Rank (above)" value={filters.rankAbove} options={["ANY", ...RANK_ORDER]} onChange={(value) => set("rankAbove", value)} />
+        <Select label="Status" value={filters.status} options={["ANY", "Available", "On leave", "On TDY"]} onChange={(value) => set("status", value)} />
+      </div>
+    </Panel>
+    <Panel title={`${rows.length} matching personnel`} icon={ClipboardList}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]">
+            <tr>
+              <th className="pb-3 pr-4">Personnel</th>
+              {account.role === "ADJT" && <th className="pb-3 pr-4">Squadron</th>}
+              <th className="pb-3 pr-4">Age</th>
+              <th className="pb-3 pr-4">Highest degree</th>
+              <th className="pb-3 pr-4">No. of children</th>
+              <th className="pb-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#edf2ee]">
+            {rows.map(({ person, age, highestDegree, numberOfChildren, status }) => (
+              <tr key={person.id}>
+                <td className="py-3 pr-4"><b>{person.fullName}</b> <small className="font-normal text-[#8aa095]">{person.rank} · {person.serviceNumber}</small></td>
+                {account.role === "ADJT" && <td className="py-3 pr-4">{person.squadron}</td>}
+                <td className="py-3 pr-4">{age ?? "-"}</td>
+                <td className="py-3 pr-4">{highestDegree}</td>
+                <td className="py-3 pr-4">{numberOfChildren}</td>
+                <td className="py-3">{status === "On leave" ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On leave</span> : status === "On TDY" ? <span className="rounded-full bg-[#e4edf7] px-3 py-1.5 text-[11px] font-bold text-[#3b6ea5]">On TDY</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <Empty text="No personnel match these filters." />}
+      </div>
+    </Panel>
   </>;
 }
 
