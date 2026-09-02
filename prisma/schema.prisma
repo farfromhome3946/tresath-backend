@@ -11,6 +11,7 @@ enum Role {
   PERSONNEL
   SDM
   ADJT
+  WORTHY_MAJOR
 }
 
 enum Squadron {
@@ -126,6 +127,16 @@ model TemporaryDuty {
   @@index([personnelId])
   @@index([squadron])
   @@index([toDate])
+}
+
+model DailyOrder {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  date         String   @unique
+  content      String
+  postedById   String?  @db.ObjectId
+  postedByName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model AuditLog {

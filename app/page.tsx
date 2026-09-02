@@ -2,26 +2,25 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Filter, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Filter, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Megaphone, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 
-type Role = "PERSONNEL" | "SDM" | "ADJT";
+type Role = "PERSONNEL" | "SDM" | "ADJT" | "WORTHY_MAJOR";
 type TableRow = Record<string, string>;
 type ProfileMetadata = { family?: Record<string, string>; military?: Record<string, string>; medical?: Record<string, string>; fitness?: Record<string, string>; courses?: TableRow[]; postings?: TableRow[]; honours?: TableRow[]; medicalHistory?: TableRow[]; medicalExams?: TableRow[]; vaccinations?: TableRow[]; bpetPpt?: TableRow[] };
 type Account = { id: string; serviceNumber: string; fullName: string; rank: string; trade: string; hometown: string; role: Role; squadron: string; metadata?: ProfileMetadata; annualLeaveBalance?: number; casualLeaveBalance?: number };
 type Amendment = { fromDate: string; toDate: string; reportingDate: string; requestedDays: number; status: "PENDING" | "SDM_APPROVED" | "ADJT_APPROVED" | "APPROVED" | "REJECTED"; sdmApproved: boolean; adjtApproved: boolean; from?: string; to?: string };
 type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null; sdmApproved?: boolean; adjtApproved?: boolean };
 type TDY = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; reason: string; location: string; from: string; to: string };
+type DailyOrder = { date: string; content: string; postedByName?: string; updatedAt?: string } | null;
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 const api = (path: string) => `${API}${path}`;
 const SQUADRONS = ["AGNI", "BHARAT", "CHARDIKALA", "JHANGI"];
 const LEAVE_ALLOWANCES = { AL: 60, CL: 30 } as const;
 const EDUCATION_LEVELS = ["Below Matric", "Matric", "Higher Secondary", "Diploma", "Graduate", "Post-Graduate", "Doctorate"];
+const QUALIFICATION_TAGS = ["Drone Course Qualified", "Medically Fit", "CI/CT Tenure Done", "HAA Tenure Done"];
 const RANK_ORDER = ["Sowar", "L Dfr", "Dfr", "Nb Ris", "Ris", "Ris Maj", "Lt", "Capt", "Maj", "Lt Col", "Col", "Brig"];
 
-function rankIndex(rank: string) {
-  return RANK_ORDER.findIndex((candidate) => candidate.toLowerCase() === rank.trim().toLowerCase());
-}
 
 function computeAge(dob?: string) {
   if (!dob) return null;
@@ -32,6 +31,76 @@ function computeAge(dob?: string) {
   const hadBirthdayThisYear = today.getMonth() > birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
   if (!hadBirthdayThisYear) age -= 1;
   return age;
+}
+
+function computeYearsOfService(dateOfEnrolment?: string) {
+  return computeAge(dateOfEnrolment);
+}
+
+type ListFieldType = "number" | "select" | "text" | "boolean";
+type ListFieldDef = { key: string; label: string; type: ListFieldType; options?: string[] };
+const LIST_FIELDS: ListFieldDef[] = [
+  { key: "age", label: "Age", type: "number" },
+  { key: "service", label: "Service (years)", type: "number" },
+  { key: "rank", label: "Rank", type: "select", options: RANK_ORDER },
+  { key: "education", label: "Qualification (highest degree)", type: "select", options: EDUCATION_LEVELS },
+  { key: "nativePlace", label: "Native place", type: "text" },
+  { key: "gamesPlayed", label: "Games played", type: "text" },
+  { key: "status", label: "Status", type: "select", options: ["Available", "On leave", "On TDY"] },
+  { key: "cpt", label: "CPT recorded", type: "boolean" },
+  ...QUALIFICATION_TAGS.map((tag) => ({ key: `tag:${tag}`, label: tag, type: "boolean" as const })),
+];
+
+type ListFilterBox = { field: string; min: string; max: string; comparator: string; select: string; text: string; bool: string };
+const blankListFilterBox = (): ListFilterBox => ({ field: "ANY", min: "", max: "", comparator: "ABOVE", select: "", text: "", bool: "YES" });
+
+function listFieldValue(person: Person, key: string, status: string) {
+  const military = person.metadata?.military ?? {};
+  if (key === "age") return computeAge(military.dateOfBirth);
+  if (key === "service") return computeYearsOfService(military.dateOfEnrolment);
+  if (key === "rank") return person.rank;
+  if (key === "education") return military.highestDegree || "";
+  if (key === "nativePlace") return person.hometown || "";
+  if (key === "gamesPlayed") return military.gamesPlayed || "";
+  if (key === "status") return status;
+  if (key === "cpt") return (person.metadata?.bpetPpt?.length ?? 0) > 0;
+  if (key.startsWith("tag:")) {
+    const tag = key.slice(4);
+    const tags = (military.qualifications || "").split(",").map((value) => value.trim());
+    return tags.includes(tag);
+  }
+  return null;
+}
+
+function listBoxPasses(box: ListFilterBox, fieldDef: ListFieldDef, value: unknown) {
+  if (box.field === "ANY") return true;
+  if (fieldDef.type === "number") {
+    if (value === null) return false;
+    const numeric = value as number;
+    if (box.min !== "" && numeric < Number(box.min)) return false;
+    if (box.max !== "" && numeric > Number(box.max)) return false;
+    return true;
+  }
+  if (fieldDef.type === "select") {
+    if (box.select === "") return true;
+    if (fieldDef.key === "status") return box.select === value;
+    const order = fieldDef.options ?? [];
+    const valueIndex = order.findIndex((option) => option.toLowerCase() === String(value).toLowerCase());
+    const targetIndex = order.findIndex((option) => option.toLowerCase() === box.select.toLowerCase());
+    if (valueIndex < 0) return false;
+    if (box.comparator === "ABOVE") return valueIndex > targetIndex;
+    if (box.comparator === "BELOW") return valueIndex < targetIndex;
+    return valueIndex === targetIndex;
+  }
+  if (fieldDef.type === "text") {
+    if (box.text.trim() === "") return true;
+    return String(value).toLowerCase().includes(box.text.trim().toLowerCase());
+  }
+  if (fieldDef.type === "boolean") {
+    if (box.bool === "ANY") return true;
+    return Boolean(value) === (box.bool === "YES");
+  }
+  return true;
 }
 
 function RajputCrestIcon({ size = 48 }: { size?: number }) {
@@ -166,7 +235,7 @@ function Auth({ register, setRegister, onLogin }: { register: boolean; setRegist
             {register && <DarkField label="Full name" value={form.fullName} onChange={(value) => update("fullName", value)} />}
             <DarkField label="Army No." value={form.serviceNumber} onChange={(value) => update("serviceNumber", value)} />
             <DarkField label="Password" type={passwordVisible ? "text" : "password"} value={form.password} onChange={(value) => update("password", value)} endAdornment={<button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="p-1 text-white/45 transition hover:text-[#d7ae3d]" aria-label={passwordVisible ? "Hide password" : "Show password"}>{passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button>} />
-            {register && <div className="grid gap-4 sm:grid-cols-2"><DarkSelect label="Profile type" value={form.role} options={["PERSONNEL", "SDM", "ADJT"]} onChange={(value) => update("role", value)} /><DarkSelect label="Squadron" value={form.squadron} options={SQUADRONS} onChange={(value) => update("squadron", value)} /></div>}
+            {register && <div className="grid gap-4 sm:grid-cols-2"><DarkSelect label="Profile type" value={form.role} options={["PERSONNEL", "SDM", "ADJT", "WORTHY_MAJOR"]} onChange={(value) => update("role", value)} /><DarkSelect label="Squadron" value={form.squadron} options={SQUADRONS} onChange={(value) => update("squadron", value)} /></div>}
             {error && <p role="alert" className="border-l-2 border-red-400 bg-red-500/10 px-3 py-3 text-xs font-semibold text-red-200">{error}</p>}
             <button disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 bg-[#d7ae3d] px-4 py-3 text-sm font-black text-[#07120d] transition hover:bg-[#ebc653] disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Connecting..." : register ? "Create profile" : "Continue to workspace"}<ChevronRight size={18} /></button>
           </form>
@@ -188,29 +257,31 @@ function Status({ value }: { value: string }) { return <span className={`rounded
 function Empty({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-[#cbded1] p-8 text-center text-sm text-[#829c8f]">{text}</div>; }
 
 function Workspace({ account, setAccount }: { account: Account; setAccount: (account: Account | null) => void }) {
-  const command = account.role !== "PERSONNEL";
-  const [view, setView] = useState(command ? "overview" : "personal");
+  const command = account.role === "SDM" || account.role === "ADJT";
+  const [view, setView] = useState(command ? "overview" : account.role === "WORTHY_MAJOR" ? "orders" : "personal");
   const [menu, setMenu] = useState(false);
   const [leave, setLeave] = useState<Leave[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [tdy, setTdy] = useState<TDY[]>([]);
+  const [todayOrder, setTodayOrder] = useState<DailyOrder>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     async function load() {
-      const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
-      const [leaveResponse, peopleResponse, tdyResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`))]);
+      const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" || account.role === "WORTHY_MAJOR" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
+      const [leaveResponse, peopleResponse, tdyResponse, orderResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`)), fetch(api(`/api/orders?date=${calendarDate()}`))]);
       if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []);
       if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []);
       if (tdyResponse.ok) setTdy((await tdyResponse.json()).temporaryDuty ?? []);
+      if (orderResponse.ok) setTodayOrder((await orderResponse.json()).order ?? null);
     }
     void load();
     if (!command) return;
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
   }, [account.role, account.serviceNumber, account.squadron, command]);
-  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "reports", text: "Make a list", icon: Filter }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }];
-  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", reports: "Make a list", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "people" && <People people={people} />}</main></div></div>;
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", reports: "Make a list", orders: "Worthy Major's orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
@@ -279,6 +350,75 @@ function PendingNotifications({ account, leave, onUpdated }: { account: Account;
       ))}
     </div>
   );
+}
+
+function OrdersBoard({ account }: { account: Account }) {
+  const canPost = account.role === "WORTHY_MAJOR";
+  const [selectedDate, setSelectedDate] = useState(calendarDate());
+  const [order, setOrder] = useState<DailyOrder>(null);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setLoading(true);
+      setError("");
+      setNotice("");
+      try {
+        const response = await fetch(api(`/api/orders?date=${selectedDate}`));
+        if (!response.ok) throw new Error("Unable to load orders.");
+        const data = await response.json();
+        if (!cancelled) { setOrder(data.order ?? null); setDraft(data.order?.content ?? ""); }
+      } catch {
+        if (!cancelled) setError("Unable to load orders for this date.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void run();
+    return () => { cancelled = true; };
+  }, [selectedDate]);
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(api("/api/orders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: selectedDate, content: draft, serviceNumber: account.serviceNumber }) });
+      const data = await response.json();
+      if (response.ok) { setOrder(data.order); setNotice("Order posted."); } else { setError(data.error || "Unable to save the order."); }
+    } catch {
+      setError("Unable to connect to server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <>
+    <Intro title="Worthy Major's orders" detail="The order of the day, posted by the Worthy Major. Browse any past or future date below." />
+    <Panel title="Select date" icon={CalendarDays}>
+      <DateInput label="Date" value={selectedDate} onChange={setSelectedDate} />
+    </Panel>
+    <Panel title={selectedDate === calendarDate() ? "Today's order" : `Order for ${selectedDate}`} icon={Megaphone}>
+      {loading ? <p className="text-sm text-[#789489]">Loading...</p> : canPost ? (
+        <div>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={6} placeholder="Write the order for this date..." className="w-full rounded-xl border border-[#d8e3dc] px-4 py-3 text-sm outline-none focus:border-[#5c9b79]" />
+          {error && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}
+          {notice && <p className="mt-3 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}
+          <button disabled={saving} onClick={() => void save()} className="mt-4 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Post order"}</button>
+          {order?.postedByName && <p className="mt-3 text-xs text-[#8aa095]">Last posted by {order.postedByName}</p>}
+        </div>
+      ) : order?.content ? (
+        <div>
+          <p className="whitespace-pre-line text-sm font-semibold text-[#214a38]">{order.content}</p>
+          {order.postedByName && <p className="mt-3 text-xs text-[#8aa095]">Posted by {order.postedByName}</p>}
+        </div>
+      ) : <Empty text="No orders posted for this date." />}
+    </Panel>
+  </>;
 }
 
 function AIAssistant({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
@@ -402,7 +542,7 @@ function ProfileSections({ account, section, onSaved }: { account: Account; sect
   const military = metadata.military ?? {};
   const medical = metadata.medical ?? {};
   const fitness = metadata.fitness ?? {};
-  const [personal, setPersonal] = useState({ fullName: account.fullName, rank: account.rank, trade: account.trade, hometown: account.hometown, parentUnit: military.parentUnit ?? "", presentUnit: military.presentUnit ?? "", dateOfBirth: military.dateOfBirth ?? "", dateOfEnrolment: military.dateOfEnrolment ?? "", dateOfPresentRank: military.dateOfPresentRank ?? "", superannuationDate: military.superannuationDate ?? "", totalService: military.totalService ?? "", securityClearance: military.securityClearance ?? "", conductRecord: military.conductRecord ?? "", highestDegree: military.highestDegree ?? "", numberOfChildren: military.numberOfChildren ?? "" });
+  const [personal, setPersonal] = useState({ fullName: account.fullName, rank: account.rank, trade: account.trade, hometown: account.hometown, parentUnit: military.parentUnit ?? "", presentUnit: military.presentUnit ?? "", dateOfBirth: military.dateOfBirth ?? "", dateOfEnrolment: military.dateOfEnrolment ?? "", dateOfPresentRank: military.dateOfPresentRank ?? "", superannuationDate: military.superannuationDate ?? "", totalService: military.totalService ?? "", securityClearance: military.securityClearance ?? "", conductRecord: military.conductRecord ?? "", highestDegree: military.highestDegree ?? "", numberOfChildren: military.numberOfChildren ?? "", gamesPlayed: military.gamesPlayed ?? "", qualifications: military.qualifications ?? "" });
   const [courses, setCourses] = useState(() => legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }));
   const [postings, setPostings] = useState(() => legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }));
   const [honours, setHonours] = useState(() => legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }));
@@ -410,11 +550,11 @@ function ProfileSections({ account, section, onSaved }: { account: Account; sect
   const [medicalExams, setMedicalExams] = useState(() => legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }));
   const [vaccinations, setVaccinations] = useState(() => legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }));
   const [fitnessRows, setFitnessRows] = useState(() => legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }));
-  async function save() { const nextMetadata: ProfileMetadata = { ...metadata, military: { ...military, parentUnit: personal.parentUnit, presentUnit: personal.presentUnit, dateOfBirth: personal.dateOfBirth, dateOfEnrolment: personal.dateOfEnrolment, dateOfPresentRank: personal.dateOfPresentRank, superannuationDate: personal.superannuationDate, totalService: personal.totalService, securityClearance: personal.securityClearance, conductRecord: personal.conductRecord, highestDegree: personal.highestDegree, numberOfChildren: personal.numberOfChildren }, courses, postings, honours, medicalHistory, medicalExams, vaccinations, bpetPpt: fitnessRows }; const response = await fetch(api("/api/personnel"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceNumber: account.serviceNumber, ...(section === "personal" ? { fullName: personal.fullName, rank: personal.rank, trade: personal.trade, hometown: personal.hometown } : {}), metadata: nextMetadata }) }); if (response.ok) onSaved((await response.json()).account); }
+  async function save() { const nextMetadata: ProfileMetadata = { ...metadata, military: { ...military, parentUnit: personal.parentUnit, presentUnit: personal.presentUnit, dateOfBirth: personal.dateOfBirth, dateOfEnrolment: personal.dateOfEnrolment, dateOfPresentRank: personal.dateOfPresentRank, superannuationDate: personal.superannuationDate, totalService: personal.totalService, securityClearance: personal.securityClearance, conductRecord: personal.conductRecord, highestDegree: personal.highestDegree, numberOfChildren: personal.numberOfChildren, gamesPlayed: personal.gamesPlayed, qualifications: personal.qualifications }, courses, postings, honours, medicalHistory, medicalExams, vaccinations, bpetPpt: fitnessRows }; const response = await fetch(api("/api/personnel"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceNumber: account.serviceNumber, ...(section === "personal" ? { fullName: personal.fullName, rank: personal.rank, trade: personal.trade, hometown: personal.hometown } : {}), metadata: nextMetadata }) }); if (response.ok) onSaved((await response.json()).account); }
   const personalField = (label: string, key: keyof typeof personal, type = "text") => <Field label={label} value={personal[key]} onChange={(value) => setPersonal((current) => ({ ...current, [key]: value }))} type={type} required={key === "fullName" || key === "rank" || key === "trade" || key === "hometown"} />;
-  const content = section === "personal" ? <div className="grid gap-6 xl:grid-cols-2"><Panel title="Service profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{personalField("Full name", "fullName")}<div className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Army / service no.</span><p className="border border-[#d8e3dc] bg-[#f5f9f6] px-4 py-3 text-sm font-semibold">{account.serviceNumber}</p></div>{personalField("Rank", "rank")}{personalField("Arm / service", "trade")}{personalField("Parent unit", "parentUnit")}{personalField("Present unit", "presentUnit")}{personalField("Date of birth", "dateOfBirth", "date")}{personalField("Hometown / address", "hometown")}<Select label="Highest degree achieved" value={personal.highestDegree} options={["", ...EDUCATION_LEVELS]} onChange={(value) => setPersonal((current) => ({ ...current, highestDegree: value }))} />{personalField("Number of children", "numberOfChildren", "number")}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Date of enrolment / commission", "dateOfEnrolment", "date")}{personalField("Date of present rank", "dateOfPresentRank", "date")}{personalField("Total length of service", "totalService")}{personalField("Superannuation date", "superannuationDate", "date")}{personalField("Security clearance", "securityClearance")}{personalField("Conduct / ACR summary", "conductRecord")}</div></Panel></div> : section === "medical" ? <div className="grid gap-6"><RecordTableEditor title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} onChange={setMedicalHistory} /><RecordTableEditor title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} onChange={setMedicalExams} /><RecordTableEditor title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} onChange={setVaccinations} /></div> : section === "courses" ? <div className="grid gap-6"><RecordTableEditor title="Courses & qualifications" columns={courseColumns} rows={courses} onChange={setCourses} /><RecordTableEditor title="Postings & deployments" columns={postingColumns} rows={postings} onChange={setPostings} /><RecordTableEditor title="Honours & decorations" columns={honourColumns} rows={honours} onChange={setHonours} /></div> : <RecordTableEditor title="BPET / PPT results" columns={fitnessColumns} rows={fitnessRows} onChange={setFitnessRows} />;
-  const detail = section === "personal" ? "Maintain core service and personal information." : section === "medical" ? "Keep a dated history of medical care, examinations, and vaccinations." : section === "courses" ? "Add each course, posting, and honour as its own record." : "Record every BPET and PPT assessment separately.";
-  return <><Intro title={section === "personal" ? "Personal details" : section === "medical" ? "Medical details" : section === "courses" ? "Courses & qualifications" : "BPET & PPT results"} detail={detail} />{content}<button type="button" onClick={() => void save()} className="mt-6 bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save {section === "personal" ? "details" : "records"}</button></>;
+  const content = section === "personal" ? <div className="grid gap-6 xl:grid-cols-2"><Panel title="Service profile" icon={UserRound}><div className="grid gap-4 sm:grid-cols-2">{personalField("Full name", "fullName")}<div className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Army / service no.</span><p className="border border-[#d8e3dc] bg-[#f5f9f6] px-4 py-3 text-sm font-semibold">{account.serviceNumber}</p></div>{personalField("Rank", "rank")}{personalField("Arm / service", "trade")}{personalField("Parent unit", "parentUnit")}{personalField("Present unit", "presentUnit")}{personalField("Date of birth", "dateOfBirth", "date")}{personalField("Hometown / address", "hometown")}<Select label="Highest degree achieved" value={personal.highestDegree} options={["", ...EDUCATION_LEVELS]} onChange={(value) => setPersonal((current) => ({ ...current, highestDegree: value }))} />{personalField("Number of children", "numberOfChildren", "number")}</div></Panel><Panel title="Service milestones" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Date of enrolment / commission", "dateOfEnrolment", "date")}{personalField("Date of present rank", "dateOfPresentRank", "date")}{personalField("Total length of service", "totalService")}{personalField("Superannuation date", "superannuationDate", "date")}{personalField("Security clearance", "securityClearance")}{personalField("Conduct / ACR summary", "conductRecord")}</div></Panel></div> : section === "medical" ? <div className="grid gap-6"><RecordTableEditor title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} onChange={setMedicalHistory} /><RecordTableEditor title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} onChange={setMedicalExams} /><RecordTableEditor title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} onChange={setVaccinations} /></div> : section === "courses" ? <div className="grid gap-6"><RecordTableEditor title="Courses & qualifications" columns={courseColumns} rows={courses} onChange={setCourses} /><RecordTableEditor title="Postings & deployments" columns={postingColumns} rows={postings} onChange={setPostings} /><RecordTableEditor title="Honours & decorations" columns={honourColumns} rows={honours} onChange={setHonours} /><Panel title="Special qualifications & tenures" icon={ShieldCheck}><div className="grid gap-4 sm:grid-cols-2">{personalField("Games played", "gamesPlayed")}</div><div className="mt-4 grid gap-3 sm:grid-cols-2">{QUALIFICATION_TAGS.map((tag) => { const selected = personal.qualifications.split(",").map((value) => value.trim()).filter(Boolean); const checked = selected.includes(tag); return <label key={tag} className="flex items-center gap-2 rounded-xl border border-[#d8e3dc] px-4 py-3 text-sm font-semibold"><input type="checkbox" checked={checked} onChange={(event) => { const next = event.target.checked ? [...selected, tag] : selected.filter((value) => value !== tag); setPersonal((current) => ({ ...current, qualifications: next.join(", ") })); }} />{tag}</label>; })}</div></Panel></div> : <RecordTableEditor title="CPT results" columns={fitnessColumns} rows={fitnessRows} onChange={setFitnessRows} />;
+  const detail = section === "personal" ? "Maintain core service and personal information." : section === "medical" ? "Keep a dated history of medical care, examinations, and vaccinations." : section === "courses" ? "Add each course, posting, and honour as its own record." : "Record every CPT assessment separately.";
+  return <><Intro title={section === "personal" ? "Personal details" : section === "medical" ? "Medical details" : section === "courses" ? "Courses & qualifications" : "CPT results"} detail={detail} />{content}<button type="button" onClick={() => void save()} className="mt-6 bg-[#1d6047] px-5 py-3 text-sm font-bold text-white">Save {section === "personal" ? "details" : "records"}</button></>;
 }
 
 function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]; onAdded: (record: Leave) => void }) {
@@ -769,9 +909,39 @@ function IndividualLeaveDetail({ person, leave, tdy, onBack }: { person: Person;
   </>;
 }
 
+function ListFilterBoxEditor({ index, box, onChange }: { index: number; box: ListFilterBox; onChange: (box: ListFilterBox) => void }) {
+  const fieldDef = LIST_FIELDS.find((candidate) => candidate.key === box.field);
+  return (
+    <div className="rounded-xl border border-[#d8e3dc] p-4">
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#789589]">Box {index + 1}</p>
+      <label className="block"><span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#789589]">Field</span><select value={box.field} onChange={(event) => onChange({ ...blankListFilterBox(), field: event.target.value })} className="w-full rounded-xl border border-[#d8e3dc] px-3 py-3 text-sm outline-none"><option value="ANY">Any</option>{LIST_FIELDS.map((field) => <option key={field.key} value={field.key}>{field.label}</option>)}</select></label>
+      {fieldDef && (
+        <div className="mt-3">
+          {fieldDef.type === "number" && (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Min" value={box.min} onChange={(value) => onChange({ ...box, min: value })} type="number" required={false} />
+              <Field label="Max" value={box.max} onChange={(value) => onChange({ ...box, max: value })} type="number" required={false} />
+            </div>
+          )}
+          {fieldDef.type === "select" && fieldDef.key !== "status" && (
+            <div className="grid grid-cols-2 gap-2">
+              <Select label="Comparator" value={box.comparator} options={["ABOVE", "BELOW", "EXACTLY"]} onChange={(value) => onChange({ ...box, comparator: value })} />
+              <Select label="Value" value={box.select || fieldDef.options![0]} options={fieldDef.options!} onChange={(value) => onChange({ ...box, select: value })} />
+            </div>
+          )}
+          {fieldDef.type === "select" && fieldDef.key === "status" && (
+            <Select label="Value" value={box.select || fieldDef.options![0]} options={fieldDef.options!} onChange={(value) => onChange({ ...box, select: value })} />
+          )}
+          {fieldDef.type === "text" && <Field label="Contains" value={box.text} onChange={(value) => onChange({ ...box, text: value })} required={false} />}
+          {fieldDef.type === "boolean" && <Select label="Value" value={box.bool} options={["YES", "NO"]} onChange={(value) => onChange({ ...box, bool: value })} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ListBuilder({ account, people, leave, tdy }: { account: Account; people: Person[]; leave: Leave[]; tdy: TDY[] }) {
-  const [filters, setFilters] = useState({ minAge: "", maxAge: "", education: "ANY", rankAbove: "ANY", status: "ANY" });
-  const set = (key: keyof typeof filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const [boxes, setBoxes] = useState<ListFilterBox[]>(() => Array.from({ length: 5 }, blankListFilterBox));
   const today = calendarDate();
 
   const onLeaveByArmyNo = new Map<string, Leave>();
@@ -779,59 +949,65 @@ function ListBuilder({ account, people, leave, tdy }: { account: Account; people
   const onTdyByArmyNo = new Map<string, TDY>();
   for (const item of tdy) { if (item.armyNo && item.from <= today && item.to >= today) onTdyByArmyNo.set(item.armyNo, item); }
 
-  const minEducationRank = filters.education === "ANY" ? -1 : EDUCATION_LEVELS.indexOf(filters.education);
-  const rankThreshold = filters.rankAbove === "ANY" ? -1 : rankIndex(filters.rankAbove);
-
   const rows = people.map((person) => {
     const military = person.metadata?.military ?? {};
-    const age = computeAge(military.dateOfBirth);
-    const highestDegree = military.highestDegree || "-";
-    const numberOfChildren = military.numberOfChildren || "0";
-    const onLeave = onLeaveByArmyNo.get(person.serviceNumber);
-    const onTdy = onTdyByArmyNo.get(person.serviceNumber);
-    const status = onLeave ? "On leave" : onTdy ? "On TDY" : "Available";
-    return { person, age, highestDegree, numberOfChildren, status };
-  }).filter(({ person, age, highestDegree, status }) => {
-    if (filters.minAge !== "" && (age === null || age < Number(filters.minAge))) return false;
-    if (filters.maxAge !== "" && (age === null || age > Number(filters.maxAge))) return false;
-    if (filters.education !== "ANY") { const rank = EDUCATION_LEVELS.indexOf(highestDegree); if (rank < 0 || rank < minEducationRank) return false; }
-    if (filters.rankAbove !== "ANY") { const rank = rankIndex(person.rank); if (rank < 0 || rank <= rankThreshold) return false; }
-    if (filters.status !== "ANY" && status !== filters.status) return false;
-    return true;
+    const status = onLeaveByArmyNo.has(person.serviceNumber) ? "On leave" : onTdyByArmyNo.has(person.serviceNumber) ? "On TDY" : "Available";
+    const tags = (military.qualifications || "").split(",").map((value) => value.trim()).filter(Boolean);
+    return {
+      person, status,
+      age: computeAge(military.dateOfBirth),
+      service: computeYearsOfService(military.dateOfEnrolment),
+      education: military.highestDegree || "-",
+      nativePlace: person.hometown || "-",
+      gamesPlayed: military.gamesPlayed || "-",
+      tags,
+    };
+  }).filter(({ person, status }) => {
+    return boxes.every((box) => {
+      if (box.field === "ANY") return true;
+      const fieldDef = LIST_FIELDS.find((candidate) => candidate.key === box.field);
+      if (!fieldDef) return true;
+      const value = listFieldValue(person, box.field, status);
+      return listBoxPasses(box, fieldDef, value);
+    });
   });
 
   return <>
-    <Intro title="Make a list" detail="Build a custom personnel list by age, education, rank, and current status." />
+    <Intro title="Make a list" detail="Choose up to five criteria below, in any order, to build a fully custom personnel list." />
     <Panel title="Filters" icon={Filter}>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <Field label="Min age" value={filters.minAge} onChange={(value) => set("minAge", value)} type="number" required={false} />
-        <Field label="Max age" value={filters.maxAge} onChange={(value) => set("maxAge", value)} type="number" required={false} />
-        <Select label="Education (this level & above)" value={filters.education} options={["ANY", ...EDUCATION_LEVELS]} onChange={(value) => set("education", value)} />
-        <Select label="Rank (above)" value={filters.rankAbove} options={["ANY", ...RANK_ORDER]} onChange={(value) => set("rankAbove", value)} />
-        <Select label="Status" value={filters.status} options={["ANY", "Available", "On leave", "On TDY"]} onChange={(value) => set("status", value)} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {boxes.map((box, index) => (
+          <ListFilterBoxEditor key={index} index={index} box={box} onChange={(next) => setBoxes((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} />
+        ))}
       </div>
     </Panel>
     <Panel title={`${rows.length} matching personnel`} icon={ClipboardList}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]">
             <tr>
               <th className="pb-3 pr-4">Personnel</th>
               {account.role === "ADJT" && <th className="pb-3 pr-4">Squadron</th>}
               <th className="pb-3 pr-4">Age</th>
-              <th className="pb-3 pr-4">Highest degree</th>
-              <th className="pb-3 pr-4">No. of children</th>
+              <th className="pb-3 pr-4">Service</th>
+              <th className="pb-3 pr-4">Qualification</th>
+              <th className="pb-3 pr-4">Native place</th>
+              <th className="pb-3 pr-4">Games played</th>
+              <th className="pb-3 pr-4">Tags</th>
               <th className="pb-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#edf2ee]">
-            {rows.map(({ person, age, highestDegree, numberOfChildren, status }) => (
+            {rows.map(({ person, status, age, service, education, nativePlace, gamesPlayed, tags }) => (
               <tr key={person.id}>
                 <td className="py-3 pr-4"><b>{person.fullName}</b> <small className="font-normal text-[#8aa095]">{person.rank} · {person.serviceNumber}</small></td>
                 {account.role === "ADJT" && <td className="py-3 pr-4">{person.squadron}</td>}
                 <td className="py-3 pr-4">{age ?? "-"}</td>
-                <td className="py-3 pr-4">{highestDegree}</td>
-                <td className="py-3 pr-4">{numberOfChildren}</td>
+                <td className="py-3 pr-4">{service ?? "-"}</td>
+                <td className="py-3 pr-4">{education}</td>
+                <td className="py-3 pr-4">{nativePlace}</td>
+                <td className="py-3 pr-4">{gamesPlayed}</td>
+                <td className="py-3 pr-4">{tags.length ? tags.join(", ") : "-"}</td>
                 <td className="py-3">{status === "On leave" ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On leave</span> : status === "On TDY" ? <span className="rounded-full bg-[#e4edf7] px-3 py-1.5 text-[11px] font-bold text-[#3b6ea5]">On TDY</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}</td>
               </tr>
             ))}
@@ -843,6 +1019,6 @@ function ListBuilder({ account, people, leave, tdy }: { account: Account; people
   </>;
 }
 
-function People({ people }: { people: Person[] }) { const [selected, setSelected] = useState<Person | null>(null); if (selected) return <PersonDetail person={selected} onBack={() => setSelected(null)} />; return <><Intro title="All personnel" detail="Select a person to view their personal, medical, course, posting, honour, vaccination, and BPET/PPT records." /><Panel title={`${people.length} personnel records`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Personnel</th><th className="pb-3">Rank / trade</th><th className="pb-3">Squadron</th><th className="pb-3"><span className="sr-only">View</span></th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{people.map((person) => <tr key={person.id} className="hover:bg-[#f5f9f6]"><td className="py-4"><b>{person.fullName}</b><small className="block text-xs text-[#8aa095]">{person.serviceNumber}</small></td><td className="py-4">{person.rank}<small className="block text-xs text-[#8aa095]">{person.trade}</small></td><td className="py-4">{person.squadron}</td><td className="py-4 text-right"><button type="button" onClick={() => setSelected(person)} className="border border-[#bcd8c6] p-2 text-[#287052] hover:bg-[#e5f3e9]" aria-label={`View ${person.fullName}`}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{!people.length && <Empty text="No personnel records found." />}</div></Panel></>; }
+function People({ people }: { people: Person[] }) { const [selected, setSelected] = useState<Person | null>(null); if (selected) return <PersonDetail person={selected} onBack={() => setSelected(null)} />; return <><Intro title="All personnel" detail="Select a person to view their personal, medical, course, posting, honour, vaccination, and CPT records." /><Panel title={`${people.length} personnel records`} icon={Users}><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="border-b border-[#e3ece6] text-[10px] uppercase tracking-wider text-[#8aa095]"><tr><th className="pb-3">Personnel</th><th className="pb-3">Rank / trade</th><th className="pb-3">Squadron</th><th className="pb-3"><span className="sr-only">View</span></th></tr></thead><tbody className="divide-y divide-[#edf2ee]">{people.map((person) => <tr key={person.id} className="hover:bg-[#f5f9f6]"><td className="py-4"><b>{person.fullName}</b><small className="block text-xs text-[#8aa095]">{person.serviceNumber}</small></td><td className="py-4">{person.rank}<small className="block text-xs text-[#8aa095]">{person.trade}</small></td><td className="py-4">{person.squadron}</td><td className="py-4 text-right"><button type="button" onClick={() => setSelected(person)} className="border border-[#bcd8c6] p-2 text-[#287052] hover:bg-[#e5f3e9]" aria-label={`View ${person.fullName}`}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{!people.length && <Empty text="No personnel records found." />}</div></Panel></>; }
 
-function PersonDetail({ person, onBack }: { person: Person; onBack: () => void }) { const [tab, setTab] = useState("personal"); const metadata = person.metadata ?? {}; const military = metadata.military ?? {}; const medical = metadata.medical ?? {}; const fitness = metadata.fitness ?? {}; const courses = legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }); const postings = legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }); const honours = legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }); const medicalHistory = legacyRows(metadata.medicalHistory, medicalHistoryColumns, { condition: medical.chronicConditions ?? "", treatment: medical.medications ?? "", remarks: medical.surgeries ?? "" }); const medicalExams = legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }); const vaccinations = legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }); const bpetPpt = legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }); const tabs = [{ id: "personal", text: "Personal" }, { id: "medical", text: "Medical" }, { id: "courses", text: "Courses & qualifications" }, { id: "fitness", text: "BPET & PPT" }]; const personalRows = [{ label: "Army / service no.", value: person.serviceNumber }, { label: "Rank", value: person.rank }, { label: "Arm / service", value: person.trade }, { label: "Hometown / address", value: person.hometown }, { label: "Parent unit", value: military.parentUnit ?? "-" }, { label: "Present unit", value: military.presentUnit ?? "-" }, { label: "Date of enrolment", value: military.dateOfEnrolment ?? "-" }, { label: "Security clearance", value: military.securityClearance ?? "-" }]; return <><button type="button" onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-bold text-[#287052]"><ChevronLeft size={17} />All personnel</button><Intro title={person.fullName} detail={`${person.rank} · ${person.serviceNumber} · ${person.squadron} squadron`} /><div className="mb-6 flex flex-wrap gap-2 border-b border-[#d8e5dc] pb-4">{tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`px-3 py-2 text-xs font-bold ${tab === item.id ? "bg-[#1d6047] text-white" : "border border-[#cbded1] text-[#527363]"}`}>{item.text}</button>)}</div>{tab === "personal" && <Panel title="Personal details" icon={UserRound}><table className="w-full text-left text-sm"><tbody className="divide-y divide-[#edf2ee]">{personalRows.map((row) => <tr key={row.label}><th className="w-1/3 py-3 text-xs uppercase tracking-wider text-[#789489]">{row.label}</th><td className="py-3 font-semibold">{row.value}</td></tr>)}</tbody></table></Panel>}{tab === "medical" && <div className="grid gap-6"><RecordTable title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} /><RecordTable title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} /><RecordTable title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} /></div>}{tab === "courses" && <div className="grid gap-6"><RecordTable title="Courses & qualifications" columns={courseColumns} rows={courses} /><RecordTable title="Postings & deployments" columns={postingColumns} rows={postings} /><RecordTable title="Honours & decorations" columns={honourColumns} rows={honours} /></div>}{tab === "fitness" && <RecordTable title="BPET / PPT results" columns={fitnessColumns} rows={bpetPpt} />}</>; }
+function PersonDetail({ person, onBack }: { person: Person; onBack: () => void }) { const [tab, setTab] = useState("personal"); const metadata = person.metadata ?? {}; const military = metadata.military ?? {}; const medical = metadata.medical ?? {}; const fitness = metadata.fitness ?? {}; const courses = legacyRows(metadata.courses, courseColumns, { course: military.coursesAttended ?? "", institution: military.courseInstitution ?? "", grade: military.courseGradings ?? "", completed: military.courseCompletionDate ?? "" }); const postings = legacyRows(metadata.postings, postingColumns, { unit: military.postings ?? "" }); const honours = legacyRows(metadata.honours, honourColumns, { honour: military.decorations ?? "" }); const medicalHistory = legacyRows(metadata.medicalHistory, medicalHistoryColumns, { condition: medical.chronicConditions ?? "", treatment: medical.medications ?? "", remarks: medical.surgeries ?? "" }); const medicalExams = legacyRows(metadata.medicalExams, medicalExamColumns, { date: medical.ameDate ?? "", category: medical.medicalCategory ?? "", height: medical.height ?? "", weight: medical.weight ?? "", bmi: medical.bmi ?? "", bloodGroup: medical.bloodGroup ?? "" }); const vaccinations = legacyRows(metadata.vaccinations, vaccinationColumns, { vaccine: medical.vaccinations ?? "" }); const bpetPpt = legacyRows(metadata.bpetPpt, fitnessColumns, { date: fitness.testDate ?? "", runTime: fitness.runTime ?? "", pushups: fitness.pushups ?? "", situps: fitness.situps ?? "", obstacles: fitness.obstacleResults ?? "", grade: fitness.fitnessGrade ?? "" }); const tabs = [{ id: "personal", text: "Personal" }, { id: "medical", text: "Medical" }, { id: "courses", text: "Courses & qualifications" }, { id: "fitness", text: "CPT" }]; const personalRows = [{ label: "Army / service no.", value: person.serviceNumber }, { label: "Rank", value: person.rank }, { label: "Arm / service", value: person.trade }, { label: "Hometown / address", value: person.hometown }, { label: "Parent unit", value: military.parentUnit ?? "-" }, { label: "Present unit", value: military.presentUnit ?? "-" }, { label: "Date of enrolment", value: military.dateOfEnrolment ?? "-" }, { label: "Security clearance", value: military.securityClearance ?? "-" }]; return <><button type="button" onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-bold text-[#287052]"><ChevronLeft size={17} />All personnel</button><Intro title={person.fullName} detail={`${person.rank} · ${person.serviceNumber} · ${person.squadron} squadron`} /><div className="mb-6 flex flex-wrap gap-2 border-b border-[#d8e5dc] pb-4">{tabs.map((item) => <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`px-3 py-2 text-xs font-bold ${tab === item.id ? "bg-[#1d6047] text-white" : "border border-[#cbded1] text-[#527363]"}`}>{item.text}</button>)}</div>{tab === "personal" && <Panel title="Personal details" icon={UserRound}><table className="w-full text-left text-sm"><tbody className="divide-y divide-[#edf2ee]">{personalRows.map((row) => <tr key={row.label}><th className="w-1/3 py-3 text-xs uppercase tracking-wider text-[#789489]">{row.label}</th><td className="py-3 font-semibold">{row.value}</td></tr>)}</tbody></table></Panel>}{tab === "medical" && <div className="grid gap-6"><RecordTable title="Medical history" columns={medicalHistoryColumns} rows={medicalHistory} /><RecordTable title="Medical examinations" columns={medicalExamColumns} rows={medicalExams} /><RecordTable title="Vaccination log" columns={vaccinationColumns} rows={vaccinations} /></div>}{tab === "courses" && <div className="grid gap-6"><RecordTable title="Courses & qualifications" columns={courseColumns} rows={courses} /><RecordTable title="Postings & deployments" columns={postingColumns} rows={postings} /><RecordTable title="Honours & decorations" columns={honourColumns} rows={honours} /></div>}{tab === "fitness" && <RecordTable title="CPT results" columns={fitnessColumns} rows={bpetPpt} />}</>; }
