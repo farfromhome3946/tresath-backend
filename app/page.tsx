@@ -9,7 +9,7 @@ type TableRow = Record<string, string>;
 type ProfileMetadata = { family?: Record<string, string>; military?: Record<string, string>; medical?: Record<string, string>; fitness?: Record<string, string>; courses?: TableRow[]; postings?: TableRow[]; honours?: TableRow[]; medicalHistory?: TableRow[]; medicalExams?: TableRow[]; vaccinations?: TableRow[]; bpetPpt?: TableRow[] };
 type Account = { id: string; serviceNumber: string; fullName: string; rank: string; trade: string; hometown: string; role: Role; squadron: string; metadata?: ProfileMetadata; annualLeaveBalance?: number; casualLeaveBalance?: number };
 type Amendment = { fromDate: string; toDate: string; reportingDate: string; requestedDays: number; status: "PENDING" | "SDM_APPROVED" | "ADJT_APPROVED" | "APPROVED" | "REJECTED"; sdmApproved: boolean; adjtApproved: boolean; from?: string; to?: string };
-type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null };
+type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null; sdmApproved?: boolean; adjtApproved?: boolean };
 type TDY = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; reason: string; location: string; from: string; to: string };
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -96,6 +96,20 @@ function calendarDate(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function daysElapsedInclusive(fromISO: string, todayISO: string) {
+  return Math.floor((new Date(todayISO).getTime() - new Date(fromISO).getTime()) / 86400000) + 1;
+}
+
+function dailyEffectiveBalance(committed: number, records: Leave[], type: "AL" | "CL", today: string) {
+  let addBack = 0;
+  for (const item of records) {
+    if (item.type !== type || item.status !== "Approved" || !item.requestedDays) continue;
+    const elapsed = today < item.from ? 0 : today > item.to ? item.requestedDays : Math.min(Math.max(daysElapsedInclusive(item.from, today), 0), item.requestedDays);
+    addBack += item.requestedDays - elapsed;
+  }
+  return committed + addBack;
+}
+
 export default function Home() {
   const [account, setAccount] = useState<Account | null>(null);
   const [register, setRegister] = useState(false);
@@ -164,10 +178,90 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   const [people, setPeople] = useState<Person[]>([]);
   const [tdy, setTdy] = useState<TDY[]>([]);
   const [notice, setNotice] = useState("");
-  useEffect(() => { async function load() { const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : ""; const [leaveResponse, peopleResponse, tdyResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`))]); if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []); if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []); if (tdyResponse.ok) setTdy((await tdyResponse.json()).temporaryDuty ?? []); } void load(); }, [account.role, account.serviceNumber, account.squadron]);
+  useEffect(() => {
+    async function load() {
+      const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
+      const [leaveResponse, peopleResponse, tdyResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`))]);
+      if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []);
+      if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []);
+      if (tdyResponse.ok) setTdy((await tdyResponse.json()).temporaryDuty ?? []);
+    }
+    void load();
+    if (!command) return;
+    const interval = setInterval(() => void load(), 30000);
+    return () => clearInterval(interval);
+  }, [account.role, account.serviceNumber, account.squadron, command]);
   const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "BPET & PPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }];
   const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "BPET & PPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]"><aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice("Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "people" && <People people={people} />}</main></div></div>;
+}
+
+type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
+
+function PendingNotifications({ account, leave, onUpdated }: { account: Account; leave: Leave[]; onUpdated: (leave: Leave) => void }) {
+  const seenKey = `tresath_seen_notifications_${account.serviceNumber}`;
+  const [initialSeen] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(seenKey) || "[]") as string[]); } catch { return new Set(); }
+  });
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const candidates: PendingNotice[] = [];
+  for (const item of leave) {
+    if (item.status !== "Approved" && item.status !== "Rejected") {
+      const approvedByMe = account.role === "SDM" ? item.sdmApproved : item.adjtApproved;
+      if (!approvedByMe) candidates.push({ id: `request-${item.id}`, kind: "request", leave: item });
+    }
+    if (item.amendment && item.amendment.status !== "APPROVED" && item.amendment.status !== "REJECTED") {
+      const approvedByMe = account.role === "SDM" ? item.amendment.sdmApproved : item.amendment.adjtApproved;
+      if (!approvedByMe) candidates.push({ id: `amendment-${item.id}`, kind: "amendment", leave: item });
+    }
+  }
+  const toasts = candidates.filter((candidate) => !initialSeen.has(candidate.id) && !dismissed.has(candidate.id));
+
+  useEffect(() => {
+    let stored: string[] = [];
+    try { stored = JSON.parse(localStorage.getItem(seenKey) || "[]") as string[]; } catch { stored = []; }
+    const storedSet = new Set(stored);
+    let changed = false;
+    for (const candidate of candidates) { if (!storedSet.has(candidate.id)) { storedSet.add(candidate.id); changed = true; } }
+    if (changed) { try { localStorage.setItem(seenKey, JSON.stringify([...storedSet])); } catch { /* ignore */ } }
+  });
+
+  async function decide(notice: PendingNotice, approve: boolean) {
+    setBusyId(notice.id);
+    try {
+      const action = notice.kind === "amendment" ? (approve ? "approve_amendment" : "reject_amendment") : (approve ? "approve" : "reject");
+      const response = await fetch(api("/api/leave"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: notice.leave.id, action, actorRole: account.role }) });
+      if (response.ok) { onUpdated((await response.json()).leave); setDismissed((current) => new Set(current).add(notice.id)); }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!toasts.length) return null;
+  return (
+    <div className="fixed right-4 top-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 sm:right-6 sm:top-6">
+      {toasts.map((toast) => (
+        <div key={toast.id} className="rounded-2xl border border-[#d8e5dc] bg-white p-4 shadow-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#e5f3e9] text-[#1d6047]"><Bell size={16} /></span>
+              <div>
+                <p className="text-sm font-bold text-[#214a38]">{toast.leave.name ?? "Personnel"} wants leave</p>
+                <p className="mt-1 text-xs text-[#58786a]">{toast.kind === "amendment" && toast.leave.amendment ? <>Modification: {toast.leave.amendment.from} to {toast.leave.amendment.to}</> : <>{toast.leave.from} to {toast.leave.to} · {toast.leave.type}</>}</p>
+              </div>
+            </div>
+            <button onClick={() => setDismissed((current) => new Set(current).add(toast.id))} className="p-1 text-[#8aa095] hover:text-[#5a7568]" aria-label="Dismiss"><X size={15} /></button>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button disabled={busyId === toast.id} onClick={() => decide(toast, true)} className="flex-1 rounded-lg bg-[#1d6047] px-3 py-2 text-xs font-bold text-white disabled:opacity-60">Approve</button>
+            <button disabled={busyId === toast.id} onClick={() => decide(toast, false)} className="flex-1 rounded-lg border border-[#e3ece6] px-3 py-2 text-xs font-bold text-[#a44d49] disabled:opacity-60">Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function AIAssistant({ account, leave, people }: { account: Account; leave: Leave[]; people: Person[] }) {
@@ -307,8 +401,10 @@ function ProfileSections({ account, section, onSaved }: { account: Account; sect
 }
 
 function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]; onAdded: (record: Leave) => void }) {
-  const [form, setForm] = useState({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
+  const [form, setForm] = useState({ mode: "AVAILED", leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
   const [balances, setBalances] = useState({ AL: account.annualLeaveBalance, CL: account.casualLeaveBalance });
+  const today = calendarDate();
+  const displayBalances = { AL: dailyEffectiveBalance(balances.AL ?? LEAVE_ALLOWANCES.AL, leave, "AL", today), CL: dailyEffectiveBalance(balances.CL ?? LEAVE_ALLOWANCES.CL, leave, "CL", today) };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [amendForm, setAmendForm] = useState({ fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
   const [error, setError] = useState("");
@@ -323,16 +419,16 @@ function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]
     setError("");
     setSubmitting(true);
     try {
-      const response = await fetch(api("/api/leave"), { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ ...form, recordType: "AVAILED", serviceNumber: account.serviceNumber, requestedDays: Number(form.requestedDays || days) }) 
-      }); 
-      const data = await response.json(); 
-      if (response.ok) { 
-        onAdded(data.leave); 
-        setBalances((current) => ({ ...current, [data.leave.type]: data.leave.balanceAfter })); 
-        setForm({ leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" }); 
+      const response = await fetch(api("/api/leave"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, recordType: form.mode, serviceNumber: account.serviceNumber, requestedDays: Number(form.requestedDays || days) })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        onAdded(data.leave);
+        setBalances((current) => ({ ...current, [data.leave.type]: data.leave.balanceAfter }));
+        setForm({ mode: form.mode, leaveType: "AL", fromDate: "", toDate: "", reportingDate: "", requestedDays: "" });
         setError("");
       } else {
         setError(data.error || "Unable to save leave record.");
@@ -388,7 +484,7 @@ function Availed({ account, leave, onAdded }: { account: Account; leave: Leave[]
     setError("");
   }
 
-  return <><Intro title="Leave details" detail="Track leave availed, days used, and the balance still available." /><div className="mb-6 grid gap-4 sm:grid-cols-2"><LeaveBalance type="AL" remaining={balances.AL} /><LeaveBalance type="CL" remaining={balances.CL} /></div><div className="grid gap-6 xl:grid-cols-2"><form onSubmit={submit}><Panel title="Add availed leave" icon={CalendarDays}><div className="grid gap-4 sm:grid-cols-2"><Select label="Leave type" value={form.leaveType} options={["AL", "CL"]} onChange={(value) => set("leaveType", value)} /><Field label="Days availed" value={form.requestedDays || String(days || "")} onChange={(value) => set("requestedDays", value)} type="number" /><DateInput label="From" value={form.fromDate} onChange={(value) => set("fromDate", value)} /><DateInput label="To" value={form.toDate} onChange={(value) => set("toDate", value)} /><DateInput label="Return date" value={form.reportingDate} onChange={(value) => set("reportingDate", value)} /></div>{error && !editingId && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}<button disabled={submitting} className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting ? "Saving..." : "Save leave record"}</button></Panel></form><Panel title="Leave history" icon={ClipboardList}>{leave.length ? leave.map((item) => {
+  return <><Intro title="Leave details" detail="Track leave availed, days used, and the balance still available." /><div className="mb-6 grid gap-4 sm:grid-cols-2"><LeaveBalance type="AL" remaining={displayBalances.AL} /><LeaveBalance type="CL" remaining={displayBalances.CL} /></div><div className="grid gap-6 xl:grid-cols-2"><form onSubmit={submit}><Panel title={form.mode === "REQUEST" ? "Request leave approval" : "Add availed leave"} icon={CalendarDays}><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Select label="Type" value={form.mode} options={["AVAILED", "REQUEST"]} onChange={(value) => set("mode", value)} /><p className="mt-1 text-xs text-[#789489]">{form.mode === "REQUEST" ? "Sends a request to your SDM and Adjutant for approval before it counts as leave." : "Records leave you have already availed or are currently on."}</p></div><Select label="Leave type" value={form.leaveType} options={["AL", "CL"]} onChange={(value) => set("leaveType", value)} /><Field label="Days" value={form.requestedDays || String(days || "")} onChange={(value) => set("requestedDays", value)} type="number" /><DateInput label="From" value={form.fromDate} onChange={(value) => set("fromDate", value)} /><DateInput label="To" value={form.toDate} onChange={(value) => set("toDate", value)} /><DateInput label="Return date" value={form.reportingDate} onChange={(value) => set("reportingDate", value)} /></div>{error && !editingId && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{error}</p>}<button disabled={submitting} className="mt-6 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting ? "Saving..." : form.mode === "REQUEST" ? "Send for approval" : "Save leave record"}</button></Panel></form><Panel title="Leave history" icon={ClipboardList}>{leave.length ? leave.map((item) => {
     const isEditing = editingId === item.id;
     const canEdit = item.status === "Approved" && !item.amendment;
     return (
