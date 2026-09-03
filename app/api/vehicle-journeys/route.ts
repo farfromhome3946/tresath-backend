@@ -55,6 +55,9 @@ function serialize(journey: Awaited<ReturnType<typeof prisma.vehicleJourney.find
 		turningPoint: journey.turningPoint,
 		turningPointLat: journey.turningPointLat,
 		turningPointLng: journey.turningPointLng,
+		currentLat: journey.currentLat,
+		currentLng: journey.currentLng,
+		locationUpdatedAt: journey.locationUpdatedAt?.toISOString() ?? null,
 		status: journey.status,
 		startedAt: journey.startedAt.toISOString(),
 		endedAt: journey.endedAt?.toISOString() ?? null,
@@ -139,6 +142,16 @@ export async function PATCH(request: Request) {
 		if (!current) return json({ error: "Journey not found." }, { status: 404 });
 		if (current.status !== "ONGOING") return json({ error: "This journey has already ended." }, { status: 409 });
 		const serviceNumber = typeof body.serviceNumber === "string" ? body.serviceNumber.trim().toUpperCase() : "";
+
+		if (body.action === "update_location") {
+			if (serviceNumber !== current.driverServiceNumber) return json({ error: "Only the assigned driver can share this journey's location." }, { status: 403 });
+			const lat = Number(body.lat);
+			const lng = Number(body.lng);
+			if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) throw new Error("A valid location is required.");
+			const journey = await prisma.vehicleJourney.update({ where: { id }, data: { currentLat: lat, currentLng: lng, locationUpdatedAt: new Date() }, include: withVehicle });
+			return json({ journey: serialize(journey) });
+		}
+
 		const actorRole = body.actorRole;
 		const isOwnJourney = serviceNumber && serviceNumber === current.driverServiceNumber;
 		const isVehicleAdmin = actorRole === "ADJT" || actorRole === "ATO" || actorRole === "TO";
@@ -148,6 +161,6 @@ export async function PATCH(request: Request) {
 	} catch (error) {
 		if (error instanceof SyntaxError) return json({ error: "Request body must be valid JSON." }, { status: 400 });
 		if (error instanceof Error) return json({ error: error.message }, { status: 400 });
-		return json({ error: "Unable to end journey." }, { status: 500 });
+		return json({ error: "Unable to update journey." }, { status: 500 });
 	}
 }

@@ -161,6 +161,9 @@ model VehicleJourney {
   turningPoint        String?
   turningPointLat     Float?
   turningPointLng     Float?
+  currentLat          Float?
+  currentLng          Float?
+  locationUpdatedAt   DateTime?
   status              String    @default("ONGOING")
   startedAt           DateTime  @default(now())
   endedAt             DateTime?

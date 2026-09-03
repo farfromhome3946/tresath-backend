@@ -14,7 +14,7 @@ type Amendment = { fromDate: string; toDate: string; reportingDate: string; requ
 type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null; sdmApproved?: boolean; adjtApproved?: boolean };
 type TDY = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; reason: string; location: string; from: string; to: string };
 type DailyOrder = { date: string; content: string; postedByName?: string; updatedAt?: string } | null;
-type VehicleJourney = { id: string; vehicleId: string; vehicleNumber?: string; vehicleType?: string; driverServiceNumber: string; driverName: string; driverRank: string; journeyType: "ONE_WAY" | "TWO_WAY"; origin: string; originLat?: number | null; originLng?: number | null; destination: string; destinationLat?: number | null; destinationLng?: number | null; turningPoint?: string | null; turningPointLat?: number | null; turningPointLng?: number | null; status: "ONGOING" | "COMPLETED"; startedAt: string; endedAt?: string | null };
+type VehicleJourney = { id: string; vehicleId: string; vehicleNumber?: string; vehicleType?: string; driverServiceNumber: string; driverName: string; driverRank: string; journeyType: "ONE_WAY" | "TWO_WAY"; origin: string; originLat?: number | null; originLng?: number | null; destination: string; destinationLat?: number | null; destinationLng?: number | null; turningPoint?: string | null; turningPointLat?: number | null; turningPointLng?: number | null; currentLat?: number | null; currentLng?: number | null; locationUpdatedAt?: string | null; status: "ONGOING" | "COMPLETED"; startedAt: string; endedAt?: string | null };
 type Vehicle = { id: string; vehicleNumber: string; vehicleType: string; isActive: boolean; ongoingJourney: VehicleJourney | null };
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -793,6 +793,16 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
           L.marker([journey.originLat, journey.originLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Start: ${journey.origin}<br/>Driver: ${journey.driverName}`);
           bounds.push([journey.originLat, journey.originLng]);
         }
+        if (journey.currentLat != null && journey.currentLng != null) {
+          const vehicleIcon = L.divIcon({
+            html: `<div style="background:#1d6047;border:2px solid #fff;border-radius:9999px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 1px 4px rgba(0,0,0,0.45);">🚚</div>`,
+            className: "",
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+          });
+          L.marker([journey.currentLat, journey.currentLng], { icon: vehicleIcon, zIndexOffset: 1000 }).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Driver: ${journey.driverName}`);
+          bounds.push([journey.currentLat, journey.currentLng]);
+        }
         if (journey.journeyType === "TWO_WAY") {
           if (journey.turningPointLat != null && journey.turningPointLng != null) {
             L.marker([journey.turningPointLat, journey.turningPointLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Turning point: ${journey.turningPoint}`);
@@ -815,6 +825,57 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
   }, [vehicles, canManage]);
 
   useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null; }, []);
+
+  const myJourney = vehicles.map((vehicle) => vehicle.ongoingJourney).find((journey) => journey && journey.driverServiceNumber === account.serviceNumber) ?? null;
+  const hasOwnJourney = myJourney != null;
+  const [locationStatus, setLocationStatus] = useState<"idle" | "requesting" | "sharing" | "denied" | "unsupported">("idle");
+  const [locationError, setLocationError] = useState("");
+  const watchIdRef = useRef<number | null>(null);
+  const lastSentRef = useRef(0);
+
+  useEffect(() => {
+    if (!hasOwnJourney && watchIdRef.current != null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+      setLocationStatus("idle");
+    }
+  }, [hasOwnJourney]);
+
+  useEffect(() => () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); }, []);
+
+  async function sendLocation(journeyId: string, lat: number, lng: number) {
+    try {
+      await fetch(api("/api/vehicle-journeys"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: journeyId, action: "update_location", serviceNumber: account.serviceNumber, lat, lng }) });
+    } catch { /* best effort, will retry on the next position update */ }
+  }
+
+  function enableLocationSharing(journeyId: string) {
+    if (!("geolocation" in navigator)) { setLocationStatus("unsupported"); setLocationError("Location services are not available on this device."); return; }
+    setLocationStatus("requesting");
+    setLocationError("");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocationStatus("sharing");
+        lastSentRef.current = Date.now();
+        void sendLocation(journeyId, position.coords.latitude, position.coords.longitude);
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (nextPosition) => {
+            const now = Date.now();
+            if (now - lastSentRef.current < 10000) return;
+            lastSentRef.current = now;
+            void sendLocation(journeyId, nextPosition.coords.latitude, nextPosition.coords.longitude);
+          },
+          () => { /* keep sharing on transient watch errors */ },
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
+        );
+      },
+      (geoError) => {
+        setLocationStatus(geoError.code === geoError.PERMISSION_DENIED ? "denied" : "unsupported");
+        setLocationError("Please enable location services for Tresath so your vehicle's live position can be shared on the map.");
+      },
+      { enableHighAccuracy: true, timeout: 20000 },
+    );
+  }
 
   async function addVehicle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -909,6 +970,20 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
                     <p className="text-sm font-bold text-[#5d4720]">{journey.driverName} <small className="font-normal text-[#8d6725]">{journey.driverRank} · {journey.driverServiceNumber}</small></p>
                     <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-[#8d6725]"><Navigation size={12} />{journey.journeyType === "TWO_WAY" ? `${journey.origin} → ${journey.turningPoint} → ${journey.origin} (touch & back)` : `${journey.origin} → ${journey.destination}`}</p>
                     <p className="mt-1 text-[11px] text-[#a8874a]">Started {new Date(journey.startedAt).toLocaleString()}</p>
+                    {journey.driverServiceNumber === account.serviceNumber && (
+                      <div className="mt-3 border-t border-[#f0ddb8] pt-3">
+                        {locationStatus === "sharing" ? (
+                          <p className="text-xs font-semibold text-[#347c55]">Sharing your live location on the map.</p>
+                        ) : locationStatus === "requesting" ? (
+                          <p className="text-xs font-semibold text-[#8d6725]">Requesting location permission...</p>
+                        ) : (
+                          <>
+                            <button onClick={() => enableLocationSharing(journey.id)} className="rounded-lg border border-[#39835d] px-4 py-2 text-xs font-bold text-[#1d6047]">Use location services to share this vehicle&apos;s live location</button>
+                            {(locationStatus === "denied" || locationStatus === "unsupported") && <p className="mt-2 text-xs font-semibold text-[#ad5652]">{locationError}</p>}
+                          </>
+                        )}
+                      </div>
+                    )}
                     {canEnd && <button onClick={() => void endJourney(journey.id)} disabled={busyId === journey.id} className="mt-3 rounded-lg bg-[#1d6047] px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{busyId === journey.id ? "Ending..." : "End journey"}</button>}
                   </div>
                 ) : openVehicleId === vehicle.id ? (

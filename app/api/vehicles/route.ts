@@ -47,6 +47,9 @@ function serialize(vehicle: Awaited<ReturnType<typeof prisma.vehicle.findMany>>[
 					turningPoint: journey.turningPoint,
 					turningPointLat: journey.turningPointLat,
 					turningPointLng: journey.turningPointLng,
+					currentLat: journey.currentLat,
+					currentLng: journey.currentLng,
+					locationUpdatedAt: journey.locationUpdatedAt?.toISOString() ?? null,
 					status: journey.status,
 					startedAt: journey.startedAt.toISOString(),
 				}
