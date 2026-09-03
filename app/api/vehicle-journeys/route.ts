@@ -91,6 +91,9 @@ export async function POST(request: Request) {
 		const origin = text(body.origin, "origin", 200);
 		const turningPoint = journeyType === "TWO_WAY" ? text(body.turningPoint, "turningPoint", 200) : null;
 		const destination = journeyType === "TWO_WAY" ? origin : text(body.destination, "destination", 200);
+		const suppliedLat = Number(body.originLat);
+		const suppliedLng = Number(body.originLng);
+		const hasSuppliedOrigin = Number.isFinite(suppliedLat) && Number.isFinite(suppliedLng);
 
 		const [vehicle, driver] = await Promise.all([
 			prisma.vehicle.findUnique({ where: { id: vehicleId } }),
@@ -100,12 +103,10 @@ export async function POST(request: Request) {
 		if (!driver || !driver.isActive) return json({ error: "Active personnel record not found." }, { status: 404 });
 		const ongoing = await prisma.vehicleJourney.findFirst({ where: { vehicleId, status: "ONGOING" } });
 		if (ongoing) return json({ error: "This vehicle is already on a journey." }, { status: 409 });
+		const alreadyDriving = await prisma.vehicleJourney.findFirst({ where: { driverServiceNumber: serviceNumber, status: "ONGOING" } });
+		if (alreadyDriving) return json({ error: "You are already driving another vehicle. End that journey before starting a new one." }, { status: 409 });
 
-		const [originPoint, turningPointGeo, destinationPoint] = await Promise.all([
-			geocode(origin),
-			turningPoint ? geocode(turningPoint) : Promise.resolve(null),
-			journeyType === "TWO_WAY" ? Promise.resolve(null) : geocode(destination),
-		]);
+		const originPoint = hasSuppliedOrigin ? { lat: suppliedLat, lng: suppliedLng } : await geocode(origin);
 
 		const journey = await prisma.vehicleJourney.create({
 			data: {
@@ -118,11 +119,7 @@ export async function POST(request: Request) {
 				originLat: originPoint?.lat,
 				originLng: originPoint?.lng,
 				destination,
-				destinationLat: journeyType === "TWO_WAY" ? originPoint?.lat : destinationPoint?.lat,
-				destinationLng: journeyType === "TWO_WAY" ? originPoint?.lng : destinationPoint?.lng,
 				turningPoint,
-				turningPointLat: turningPointGeo?.lat,
-				turningPointLng: turningPointGeo?.lng,
 			},
 			include: withVehicle,
 		});
@@ -152,10 +149,7 @@ export async function PATCH(request: Request) {
 			return json({ journey: serialize(journey) });
 		}
 
-		const actorRole = body.actorRole;
-		const isOwnJourney = serviceNumber && serviceNumber === current.driverServiceNumber;
-		const isVehicleAdmin = actorRole === "ADJT" || actorRole === "ATO" || actorRole === "TO";
-		if (!isOwnJourney && !isVehicleAdmin) return json({ error: "Only the driver, the Adjutant, ATO or TO can end this journey." }, { status: 403 });
+		if (serviceNumber !== current.driverServiceNumber) return json({ error: "Only the individual who started this journey can end it." }, { status: 403 });
 		const journey = await prisma.vehicleJourney.update({ where: { id }, data: { status: "COMPLETED", endedAt: new Date() }, include: withVehicle });
 		return json({ journey: serialize(journey) });
 	} catch (error) {

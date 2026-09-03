@@ -34,6 +34,8 @@ function serialize(vehicle: Awaited<ReturnType<typeof prisma.vehicle.findMany>>[
 			? {
 					id: journey.id,
 					vehicleId: journey.vehicleId,
+					vehicleNumber: vehicle.vehicleNumber,
+					vehicleType: vehicle.vehicleType,
 					driverServiceNumber: journey.driverServiceNumber,
 					driverName: journey.driverName,
 					driverRank: journey.driverRank,

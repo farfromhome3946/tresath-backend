@@ -182,6 +182,19 @@ model DailyOrder {
   updatedAt    DateTime @updatedAt
 }
 
+model SquadronOrder {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  date         String
+  squadron     Squadron
+  content      String
+  postedById   String?  @db.ObjectId
+  postedByName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([date, squadron])
+}
+
 model AuditLog {
   id             String      @id @default(auto()) @map("_id") @db.ObjectId
   personnelId    String      @db.ObjectId

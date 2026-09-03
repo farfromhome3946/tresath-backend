@@ -281,24 +281,32 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   const [people, setPeople] = useState<Person[]>([]);
   const [tdy, setTdy] = useState<TDY[]>([]);
   const [todayOrder, setTodayOrder] = useState<DailyOrder>(null);
+  const [todaySquadronOrder, setTodaySquadronOrder] = useState<DailyOrder>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     async function load() {
       const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" || account.role === "WORTHY_MAJOR" || account.role === "ATO" || account.role === "TO" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
-      const [leaveResponse, peopleResponse, tdyResponse, orderResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`)), fetch(api(`/api/orders?date=${calendarDate()}`))]);
+      const [leaveResponse, peopleResponse, tdyResponse, orderResponse, squadronOrderResponse] = await Promise.all([
+        fetch(api(`/api/leave${query}`)),
+        fetch(api(`/api/personnel${query}`)),
+        fetch(api(`/api/temporary-duty${query}`)),
+        fetch(api(`/api/orders?date=${calendarDate()}`)),
+        account.role === "ADJT" ? Promise.resolve(null) : fetch(api(`/api/squadron-orders?date=${calendarDate()}&squadron=${account.squadron}`)),
+      ]);
       if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []);
       if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []);
       if (tdyResponse.ok) setTdy((await tdyResponse.json()).temporaryDuty ?? []);
       if (orderResponse.ok) setTodayOrder((await orderResponse.json()).order ?? null);
+      if (squadronOrderResponse?.ok) setTodaySquadronOrder((await squadronOrderResponse.json()).order ?? null);
     }
     void load();
     if (!command) return;
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
   }, [account.role, account.serviceNumber, account.squadron, command]);
-  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }];
-  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", vehicles: "Vehicle tracking", reports: "Make a list", orders: "Worthy Major's orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "vehicles" && <VehicleTracking account={account} canManage={account.role === "ADJT" || account.role === "ATO" || account.role === "TO"} />}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "orders", text: "Orders", icon: Megaphone }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", vehicles: "Vehicle tracking", reports: "Make a list", orders: "Orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{view !== "orders" && account.role !== "ADJT" && todaySquadronOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#bcd7ea] bg-[#eef6fb] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#dcedf9] text-[#2f6690]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#2f6690]">{account.squadron} squadron order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#1d3f57]">{todaySquadronOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "vehicles" && <VehicleTracking account={account} canManage={account.role === "ADJT" || account.role === "ATO" || account.role === "TO"} />}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
@@ -371,6 +379,8 @@ function PendingNotifications({ account, leave, onUpdated }: { account: Account;
 
 function OrdersBoard({ account }: { account: Account }) {
   const canPost = account.role === "WORTHY_MAJOR";
+  const canPostSquadronOrder = account.role === "SDM";
+  const isADJT = account.role === "ADJT";
   const [selectedDate, setSelectedDate] = useState(calendarDate());
   const [order, setOrder] = useState<DailyOrder>(null);
   const [draft, setDraft] = useState("");
@@ -378,6 +388,13 @@ function OrdersBoard({ account }: { account: Account }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const [squadronOrder, setSquadronOrder] = useState<DailyOrder>(null);
+  const [squadronDraft, setSquadronDraft] = useState("");
+  const [squadronSaving, setSquadronSaving] = useState(false);
+  const [squadronError, setSquadronError] = useState("");
+  const [squadronNotice, setSquadronNotice] = useState("");
+  const [allSquadronOrders, setAllSquadronOrders] = useState<Record<string, DailyOrder>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -400,6 +417,34 @@ function OrdersBoard({ account }: { account: Account }) {
     return () => { cancelled = true; };
   }, [selectedDate]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setSquadronError("");
+      setSquadronNotice("");
+      if (isADJT) {
+        const results = await Promise.all(SQUADRONS.map((squadron) =>
+          fetch(api(`/api/squadron-orders?date=${selectedDate}&squadron=${squadron}`)).then((response) => (response.ok ? response.json() : { order: null })).catch(() => ({ order: null }))
+        ));
+        if (!cancelled) {
+          const map: Record<string, DailyOrder> = {};
+          SQUADRONS.forEach((squadron, index) => { map[squadron] = results[index]?.order ?? null; });
+          setAllSquadronOrders(map);
+        }
+      } else {
+        try {
+          const response = await fetch(api(`/api/squadron-orders?date=${selectedDate}&squadron=${account.squadron}`));
+          if (response.ok) {
+            const data = await response.json();
+            if (!cancelled) { setSquadronOrder(data.order ?? null); setSquadronDraft(data.order?.content ?? ""); }
+          }
+        } catch { /* leave squadron order panel empty on failure */ }
+      }
+    }
+    void run();
+    return () => { cancelled = true; };
+  }, [selectedDate, isADJT, account.squadron]);
+
   async function save() {
     setSaving(true);
     setError("");
@@ -414,12 +459,27 @@ function OrdersBoard({ account }: { account: Account }) {
     }
   }
 
+  async function saveSquadronOrder() {
+    setSquadronSaving(true);
+    setSquadronError("");
+    setSquadronNotice("");
+    try {
+      const response = await fetch(api("/api/squadron-orders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: selectedDate, content: squadronDraft, serviceNumber: account.serviceNumber }) });
+      const data = await response.json();
+      if (response.ok) { setSquadronOrder(data.order); setSquadronNotice("Squadron order posted."); } else { setSquadronError(data.error || "Unable to save the order."); }
+    } catch {
+      setSquadronError("Unable to connect to server.");
+    } finally {
+      setSquadronSaving(false);
+    }
+  }
+
   return <>
-    <Intro title="Worthy Major's orders" detail="The order of the day, posted by the Worthy Major. Browse any past or future date below." />
+    <Intro title="Orders" detail="The Worthy Major's unit-wide order and your squadron's SDM order for the day. Browse any past or future date below." />
     <Panel title="Select date" icon={CalendarDays}>
       <DateInput label="Date" value={selectedDate} onChange={setSelectedDate} />
     </Panel>
-    <Panel title={selectedDate === calendarDate() ? "Today's order" : `Order for ${selectedDate}`} icon={Megaphone}>
+    <Panel title={selectedDate === calendarDate() ? "Worthy Major's order · Today" : `Worthy Major's order for ${selectedDate}`} icon={Megaphone}>
       {loading ? <p className="text-sm text-[#789489]">Loading...</p> : canPost ? (
         <div>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={6} placeholder="Write the order for this date..." className="w-full rounded-xl border border-[#d8e3dc] px-4 py-3 text-sm outline-none focus:border-[#5c9b79]" />
@@ -435,6 +495,38 @@ function OrdersBoard({ account }: { account: Account }) {
         </div>
       ) : <Empty text="No orders posted for this date." />}
     </Panel>
+    {!isADJT && (
+      <Panel title={canPostSquadronOrder ? (selectedDate === calendarDate() ? `${account.squadron} squadron order · Today` : `${account.squadron} squadron order for ${selectedDate}`) : (selectedDate === calendarDate() ? "Squadron order · Today" : `Squadron order for ${selectedDate}`)} icon={Megaphone}>
+        {canPostSquadronOrder ? (
+          <div>
+            <textarea value={squadronDraft} onChange={(event) => setSquadronDraft(event.target.value)} rows={5} placeholder={`Write today's order for ${account.squadron} squadron...`} className="w-full rounded-xl border border-[#d8e3dc] px-4 py-3 text-sm outline-none focus:border-[#5c9b79]" />
+            {squadronError && <p role="alert" className="mt-3 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">{squadronError}</p>}
+            {squadronNotice && <p className="mt-3 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{squadronNotice}</p>}
+            <button disabled={squadronSaving} onClick={() => void saveSquadronOrder()} className="mt-4 rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{squadronSaving ? "Saving..." : "Post squadron order"}</button>
+            {squadronOrder?.postedByName && <p className="mt-3 text-xs text-[#8aa095]">Last posted by {squadronOrder.postedByName}</p>}
+          </div>
+        ) : squadronOrder?.content ? (
+          <div>
+            <p className="whitespace-pre-line text-sm font-semibold text-[#214a38]">{squadronOrder.content}</p>
+            {squadronOrder.postedByName && <p className="mt-3 text-xs text-[#8aa095]">Posted by {squadronOrder.postedByName}</p>}
+          </div>
+        ) : <Empty text="No squadron order posted for this date." />}
+      </Panel>
+    )}
+    {isADJT && (
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        {SQUADRONS.map((squadron) => (
+          <Panel key={squadron} title={`${squadron} squadron order`} icon={Megaphone}>
+            {allSquadronOrders[squadron]?.content ? (
+              <div>
+                <p className="whitespace-pre-line text-sm font-semibold text-[#214a38]">{allSquadronOrders[squadron]?.content}</p>
+                {allSquadronOrders[squadron]?.postedByName && <p className="mt-3 text-xs text-[#8aa095]">Posted by {allSquadronOrders[squadron]?.postedByName}</p>}
+              </div>
+            ) : <Empty text="No squadron order posted for this date." />}
+          </Panel>
+        ))}
+      </div>
+    )}
   </>;
 }
 
@@ -743,7 +835,35 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
   const [newVehicle, setNewVehicle] = useState({ vehicleNumber: "", vehicleType: "" });
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [openVehicleId, setOpenVehicleId] = useState<string | null>(null);
-  const [journeyForm, setJourneyForm] = useState({ journeyType: "ONE_WAY" as "ONE_WAY" | "TWO_WAY", origin: "", destination: "", turningPoint: "" });
+  const [journeyForm, setJourneyForm] = useState({ journeyType: "ONE_WAY" as "ONE_WAY" | "TWO_WAY", origin: "", destination: "", turningPoint: "", originLat: null as number | null, originLng: null as number | null });
+  const [locatingOrigin, setLocatingOrigin] = useState(false);
+  const [locateError, setLocateError] = useState("");
+
+  function useCurrentLocationForOrigin() {
+    if (!("geolocation" in navigator)) { setLocateError("Location services are not available on this device."); return; }
+    setLocatingOrigin(true);
+    setLocateError("");
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        let placeName = `Current location (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+        try {
+          const response = await fetch(api(`/api/reverse-geocode?lat=${latitude}&lng=${longitude}`));
+          if (response.ok) {
+            const data = await response.json();
+            if (data.placeName) placeName = data.placeName;
+          }
+        } catch { /* keep the coordinate fallback */ }
+        setJourneyForm((current) => ({ ...current, origin: placeName, originLat: latitude, originLng: longitude }));
+        setLocatingOrigin(false);
+      },
+      () => {
+        setLocateError("Please enable location services to use your current location.");
+        setLocatingOrigin(false);
+      },
+      { enableHighAccuracy: true, timeout: 20000 },
+    );
+  }
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const markersLayerRef = useRef<LeafletLayerGroup | null>(null);
@@ -802,21 +922,6 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
           });
           L.marker([journey.currentLat, journey.currentLng], { icon: vehicleIcon, zIndexOffset: 1000 }).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Driver: ${journey.driverName}`);
           bounds.push([journey.currentLat, journey.currentLng]);
-        }
-        if (journey.journeyType === "TWO_WAY") {
-          if (journey.turningPointLat != null && journey.turningPointLng != null) {
-            L.marker([journey.turningPointLat, journey.turningPointLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Turning point: ${journey.turningPoint}`);
-            bounds.push([journey.turningPointLat, journey.turningPointLng]);
-            if (journey.originLat != null && journey.originLng != null) {
-              L.polyline([[journey.originLat, journey.originLng], [journey.turningPointLat, journey.turningPointLng], [journey.originLat, journey.originLng]], { color: "#39835d", dashArray: "6 6" }).addTo(layer);
-            }
-          }
-        } else if (journey.destinationLat != null && journey.destinationLng != null) {
-          L.marker([journey.destinationLat, journey.destinationLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Destination: ${journey.destination}`);
-          bounds.push([journey.destinationLat, journey.destinationLng]);
-          if (journey.originLat != null && journey.originLng != null) {
-            L.polyline([[journey.originLat, journey.originLng], [journey.destinationLat, journey.destinationLng]], { color: "#39835d" }).addTo(layer);
-          }
         }
       }
       if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
@@ -912,7 +1017,7 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
     try {
       const response = await fetch(api("/api/vehicle-journeys"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ vehicleId, serviceNumber: account.serviceNumber, ...journeyForm }) });
       const data = await response.json();
-      if (response.ok) { setOpenVehicleId(null); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "" }); setNotice("Journey started."); void load(); }
+      if (response.ok) { setOpenVehicleId(null); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "", originLat: null, originLng: null }); setNotice("Journey started."); void load(); }
       else setError(data.error || "Unable to start journey.");
     } catch {
       setError("Unable to connect to server.");
@@ -952,7 +1057,7 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
         <div className="space-y-3">
           {vehicles.map((vehicle) => {
             const journey = vehicle.ongoingJourney;
-            const canEnd = journey && (journey.driverServiceNumber === account.serviceNumber || canManage);
+            const canEnd = journey && journey.driverServiceNumber === account.serviceNumber;
             return (
               <div key={vehicle.id} className="rounded-xl border border-[#e3ece6] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -990,7 +1095,12 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
                   <div className="mt-3 rounded-xl border border-[#d8e3dc] p-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Select label="Journey type" value={journeyForm.journeyType === "TWO_WAY" ? "Two way (touch & back)" : "One way"} options={["One way", "Two way (touch & back)"]} onChange={(value) => setJourneyForm((current) => ({ ...current, journeyType: value.startsWith("Two") ? "TWO_WAY" : "ONE_WAY" }))} />
-                      <Field label="Start point" value={journeyForm.origin} onChange={(value) => setJourneyForm((current) => ({ ...current, origin: value }))} />
+                      <div>
+                        <Field label="Start point" value={journeyForm.origin} onChange={(value) => setJourneyForm((current) => ({ ...current, origin: value, originLat: null, originLng: null }))} />
+                        <button type="button" onClick={useCurrentLocationForOrigin} disabled={locatingOrigin} className="mt-1 text-xs font-bold text-[#1d6047] underline disabled:opacity-60">{locatingOrigin ? "Locating..." : "Use current location"}</button>
+                        {journeyForm.originLat != null && <p className="mt-1 text-[11px] text-[#347c55]">Using your current location.</p>}
+                        {locateError && <p className="mt-1 text-[11px] font-semibold text-[#ad5652]">{locateError}</p>}
+                      </div>
                       {journeyForm.journeyType === "TWO_WAY" ? (
                         <div className="sm:col-span-2">
                           <Field label="Turning point" value={journeyForm.turningPoint} onChange={(value) => setJourneyForm((current) => ({ ...current, turningPoint: value }))} />
@@ -1005,8 +1115,10 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
                       <button onClick={() => setOpenVehicleId(null)} className="rounded-lg border border-[#d8e3dc] px-4 py-2 text-xs font-bold text-[#5c7a6c]">Cancel</button>
                     </div>
                   </div>
+                ) : myJourney ? (
+                  <p className="mt-3 text-xs font-semibold text-[#8aa095]">You are already driving {myJourney.vehicleNumber}. End that journey before driving another vehicle.</p>
                 ) : (
-                  <button onClick={() => { setOpenVehicleId(vehicle.id); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "" }); }} className="mt-3 rounded-lg border border-[#39835d] px-4 py-2 text-xs font-bold text-[#1d6047]">I have been told to drive this vehicle</button>
+                  <button onClick={() => { setOpenVehicleId(vehicle.id); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "", originLat: null, originLng: null }); setLocateError(""); }} className="mt-3 rounded-lg border border-[#39835d] px-4 py-2 text-xs font-bold text-[#1d6047]">I have been told to drive this vehicle</button>
                 )}
               </div>
             );
@@ -1017,7 +1129,7 @@ function VehicleTracking({ account, canManage }: { account: Account; canManage: 
     {canManage && (
       <div className="mt-6">
         <Panel title="Live map" icon={MapPin}>
-          <p className="mb-4 text-xs text-[#8aa095]">Shows the start point, turning point / destination and route of every vehicle currently on a journey. A location only appears once it is recognized on the map.</p>
+          <p className="mb-4 text-xs text-[#8aa095]">Shows the start point of every vehicle currently on a journey, plus its live GPS position once the driver enables location sharing. Turning point and destination are for reference only and are not plotted.</p>
           <div ref={mapContainerRef} className="h-96 w-full overflow-hidden rounded-xl border border-[#d8e5dc]" />
         </Panel>
       </div>
