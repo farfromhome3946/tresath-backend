@@ -225,7 +225,7 @@ function Auth({ register, setRegister, onLogin }: { register: boolean; setRegist
           <div className="max-w-xs text-center" onClick={(event) => event.stopPropagation()}>
             <div className="relative overflow-hidden rounded-2xl border border-[#d7ae3d]/40 shadow-2xl">
               <img src="/gifs/wrong-password.webp" alt="Wrong Army No. or password" className="w-full" />
-              <p className="pointer-events-none absolute inset-x-0 bottom-[6%] text-3xl font-black uppercase tracking-wide text-white [text-shadow:2px_2px_0_#000,-2px_-2px_0_#000,2px_-2px_0_#000,-2px_2px_0_#000,0_0_10px_#000]">Chal Jhoote</p>
+              <p className="pointer-events-none absolute inset-x-0 bottom-[4%] text-sm font-bold uppercase tracking-wide text-white [text-shadow:1px_1px_0_#000,-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000]">Chal Jhoote</p>
             </div>
             <button type="button" onClick={() => setShowWrongPassword(false)} className="mt-5 rounded-xl bg-[#d7ae3d] px-6 py-3 text-sm font-black text-[#07120d]">Try again</button>
           </div>
