@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 		const body = (await request.json()) as Record<string, unknown>;
 		const vehicleNumber = text(body.vehicleNumber, "vehicleNumber", 40).toUpperCase();
 		const vehicleType = text(body.vehicleType, "vehicleType", 80);
-		const actorRole = body.actorRole === "SDM" || body.actorRole === "ADJT" ? (body.actorRole as Role) : (() => { throw new Error("Only SDM or Adjutant can add vehicles."); })();
+		const actorRole = body.actorRole === "ADJT" || body.actorRole === "ATO" || body.actorRole === "TO" ? (body.actorRole as Role) : (() => { throw new Error("Only the Adjutant, ATO or TO can add vehicles."); })();
 		void actorRole;
 		const existing = await prisma.vehicle.findUnique({ where: { vehicleNumber } });
 		if (existing) {
@@ -90,7 +90,7 @@ export async function DELETE(request: Request) {
 	try {
 		const body = (await request.json()) as Record<string, unknown>;
 		const id = text(body.id, "id", 40);
-		if (body.actorRole !== "SDM" && body.actorRole !== "ADJT") return json({ error: "Only SDM or Adjutant can remove vehicles." }, { status: 403 });
+		if (body.actorRole !== "ADJT" && body.actorRole !== "ATO" && body.actorRole !== "TO") return json({ error: "Only the Adjutant, ATO or TO can remove vehicles." }, { status: 403 });
 		const vehicle = await prisma.vehicle.findUnique({ where: { id }, include: withOngoingJourney });
 		if (!vehicle) return json({ error: "Vehicle not found." }, { status: 404 });
 		if (vehicle.journeys?.length) return json({ error: "This vehicle is currently on a journey and cannot be removed." }, { status: 409 });

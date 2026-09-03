@@ -141,8 +141,8 @@ export async function PATCH(request: Request) {
 		const serviceNumber = typeof body.serviceNumber === "string" ? body.serviceNumber.trim().toUpperCase() : "";
 		const actorRole = body.actorRole;
 		const isOwnJourney = serviceNumber && serviceNumber === current.driverServiceNumber;
-		const isCommand = actorRole === "SDM" || actorRole === "ADJT";
-		if (!isOwnJourney && !isCommand) return json({ error: "Only the driver or a commander can end this journey." }, { status: 403 });
+		const isVehicleAdmin = actorRole === "ADJT" || actorRole === "ATO" || actorRole === "TO";
+		if (!isOwnJourney && !isVehicleAdmin) return json({ error: "Only the driver, the Adjutant, ATO or TO can end this journey." }, { status: 403 });
 		const journey = await prisma.vehicleJourney.update({ where: { id }, data: { status: "COMPLETED", endedAt: new Date() }, include: withVehicle });
 		return json({ journey: serialize(journey) });
 	} catch (error) {

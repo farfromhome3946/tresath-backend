@@ -6,7 +6,7 @@ import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronR
 import "leaflet/dist/leaflet.css";
 import type { Map as LeafletMap, LayerGroup as LeafletLayerGroup } from "leaflet";
 
-type Role = "PERSONNEL" | "SDM" | "ADJT" | "WORTHY_MAJOR";
+type Role = "PERSONNEL" | "SDM" | "ADJT" | "WORTHY_MAJOR" | "ATO" | "TO";
 type TableRow = Record<string, string>;
 type ProfileMetadata = { family?: Record<string, string>; military?: Record<string, string>; medical?: Record<string, string>; fitness?: Record<string, string>; courses?: TableRow[]; postings?: TableRow[]; honours?: TableRow[]; medicalHistory?: TableRow[]; medicalExams?: TableRow[]; vaccinations?: TableRow[]; bpetPpt?: TableRow[] };
 type Account = { id: string; serviceNumber: string; fullName: string; rank: string; trade: string; hometown: string; role: Role; squadron: string; metadata?: ProfileMetadata; annualLeaveBalance?: number; casualLeaveBalance?: number };
@@ -252,7 +252,7 @@ function Auth({ register, setRegister, onLogin }: { register: boolean; setRegist
             {register && <DarkField label="Full name" value={form.fullName} onChange={(value) => update("fullName", value)} />}
             <DarkField label="Army No." value={form.serviceNumber} onChange={(value) => update("serviceNumber", value)} />
             <DarkField label="Password" type={passwordVisible ? "text" : "password"} value={form.password} onChange={(value) => update("password", value)} endAdornment={<button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="p-1 text-white/45 transition hover:text-[#d7ae3d]" aria-label={passwordVisible ? "Hide password" : "Show password"}>{passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button>} />
-            {register && <div className="grid gap-4 sm:grid-cols-2"><DarkSelect label="Profile type" value={form.role} options={["PERSONNEL", "SDM", "ADJT", "WORTHY_MAJOR"]} onChange={(value) => update("role", value)} /><DarkSelect label="Squadron" value={form.squadron} options={SQUADRONS} onChange={(value) => update("squadron", value)} /></div>}
+            {register && <div className="grid gap-4 sm:grid-cols-2"><DarkSelect label="Profile type" value={form.role} options={["PERSONNEL", "SDM", "ADJT", "WORTHY_MAJOR", "ATO", "TO"]} onChange={(value) => update("role", value)} /><DarkSelect label="Squadron" value={form.squadron} options={SQUADRONS} onChange={(value) => update("squadron", value)} /></div>}
             {error && <p role="alert" className="border-l-2 border-red-400 bg-red-500/10 px-3 py-3 text-xs font-semibold text-red-200">{error}</p>}
             <button disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 bg-[#d7ae3d] px-4 py-3 text-sm font-black text-[#07120d] transition hover:bg-[#ebc653] disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Connecting..." : register ? "Create profile" : "Continue to workspace"}<ChevronRight size={18} /></button>
           </form>
@@ -275,7 +275,7 @@ function Empty({ text }: { text: string }) { return <div className="rounded-xl b
 
 function Workspace({ account, setAccount }: { account: Account; setAccount: (account: Account | null) => void }) {
   const command = account.role === "SDM" || account.role === "ADJT";
-  const [view, setView] = useState(command ? "overview" : account.role === "WORTHY_MAJOR" ? "orders" : "personal");
+  const [view, setView] = useState(command ? "overview" : account.role === "WORTHY_MAJOR" ? "orders" : account.role === "ATO" || account.role === "TO" ? "vehicles" : "personal");
   const [menu, setMenu] = useState(false);
   const [leave, setLeave] = useState<Leave[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
@@ -284,7 +284,7 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   const [notice, setNotice] = useState("");
   useEffect(() => {
     async function load() {
-      const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" || account.role === "WORTHY_MAJOR" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
+      const query = account.role === "SDM" ? `?squadron=${account.squadron}` : account.role === "PERSONNEL" || account.role === "WORTHY_MAJOR" || account.role === "ATO" || account.role === "TO" ? `?serviceNumber=${encodeURIComponent(account.serviceNumber)}` : "";
       const [leaveResponse, peopleResponse, tdyResponse, orderResponse] = await Promise.all([fetch(api(`/api/leave${query}`)), fetch(api(`/api/personnel${query}`)), fetch(api(`/api/temporary-duty${query}`)), fetch(api(`/api/orders?date=${calendarDate()}`))]);
       if (leaveResponse.ok) setLeave((await leaveResponse.json()).leave ?? []);
       if (peopleResponse.ok) setPeople((await peopleResponse.json()).personnel ?? []);
@@ -298,7 +298,7 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
   }, [account.role, account.serviceNumber, account.squadron, command]);
   const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }];
   const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", vehicles: "Vehicle tracking", reports: "Make a list", orders: "Worthy Major's orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "vehicles" && <VehicleTracking account={account} command={command} />}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "vehicles" && <VehicleTracking account={account} canManage={account.role === "ADJT" || account.role === "ATO" || account.role === "TO"} />}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
@@ -734,7 +734,7 @@ function TdyBoard({ tdy }: { tdy: TDY[] }) {
   return <><Intro title="Temporary duty / course" detail="Personnel currently away from the squadron on temporary duty or a course, across your command." /><Panel title={`${filtered.length} temporary duty / course records`} icon={Briefcase}><label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>{filtered.length ? filtered.map((item) => <div key={item.id} className="mb-3 flex flex-col gap-2 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between"><div><b>{item.name ?? "Personnel name unavailable"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b><p className="mt-1 text-xs text-[#789489]">{item.rank} · {item.squadron} · {item.reason}</p><p className="mt-1 text-xs font-semibold text-[#287052]">{item.location} · {item.from} to {item.to}</p></div></div>) : <Empty text="No temporary duty / course records found." />}</Panel></>;
 }
 
-function VehicleTracking({ account, command }: { account: Account; command: boolean }) {
+function VehicleTracking({ account, canManage }: { account: Account; canManage: boolean }) {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -764,6 +764,7 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
   }, []);
 
   useEffect(() => {
+    if (!canManage) return;
     let cancelled = false;
     (async () => {
       const leafletModule = await import("leaflet");
@@ -811,7 +812,7 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
       if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
     })();
     return () => { cancelled = true; };
-  }, [vehicles]);
+  }, [vehicles, canManage]);
 
   useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null; }, []);
 
@@ -876,7 +877,7 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
     <Intro title="Vehicle tracking" detail="Unit vehicles, who is driving them, and where they are right now." />
     {error && <p role="alert" className="mb-5 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
     {notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}
-    {command && (
+    {canManage && (
       <Panel title="Add vehicle" icon={Plus}>
         <form onSubmit={addVehicle} className="grid gap-4 sm:grid-cols-3 sm:items-end">
           <Field label="Vehicle number" value={newVehicle.vehicleNumber} onChange={(value) => setNewVehicle((current) => ({ ...current, vehicleNumber: value }))} />
@@ -890,7 +891,7 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
         <div className="space-y-3">
           {vehicles.map((vehicle) => {
             const journey = vehicle.ongoingJourney;
-            const canEnd = journey && (journey.driverServiceNumber === account.serviceNumber || command);
+            const canEnd = journey && (journey.driverServiceNumber === account.serviceNumber || canManage);
             return (
               <div key={vehicle.id} className="rounded-xl border border-[#e3ece6] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -899,7 +900,7 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
                   </div>
                   <div className="flex items-center gap-2">
                     {journey ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On journey</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}
-                    {command && !journey && <button onClick={() => void removeVehicle(vehicle.id)} disabled={busyId === vehicle.id} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Remove vehicle"><Trash2 size={15} /></button>}
+                    {canManage && !journey && <button onClick={() => void removeVehicle(vehicle.id)} disabled={busyId === vehicle.id} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Remove vehicle"><Trash2 size={15} /></button>}
                   </div>
                 </div>
 
@@ -936,14 +937,16 @@ function VehicleTracking({ account, command }: { account: Account; command: bool
             );
           })}
         </div>
-      ) : <Empty text={command ? "No vehicles added yet. Use the form above to add one." : "No vehicles have been added for this unit yet."} />}
+      ) : <Empty text={canManage ? "No vehicles added yet. Use the form above to add one." : "No vehicles have been added for this unit yet."} />}
     </Panel>
-    <div className="mt-6">
-      <Panel title="Live map" icon={MapPin}>
-        <p className="mb-4 text-xs text-[#8aa095]">Shows the start point, turning point / destination and route of every vehicle currently on a journey. A location only appears once it is recognized on the map.</p>
-        <div ref={mapContainerRef} className="h-96 w-full overflow-hidden rounded-xl border border-[#d8e5dc]" />
-      </Panel>
-    </div>
+    {canManage && (
+      <div className="mt-6">
+        <Panel title="Live map" icon={MapPin}>
+          <p className="mb-4 text-xs text-[#8aa095]">Shows the start point, turning point / destination and route of every vehicle currently on a journey. A location only appears once it is recognized on the map.</p>
+          <div ref={mapContainerRef} className="h-96 w-full overflow-hidden rounded-xl border border-[#d8e5dc]" />
+        </Panel>
+      </div>
+    )}
   </>;
 }
 

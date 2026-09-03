@@ -12,6 +12,8 @@ enum Role {
   SDM
   ADJT
   WORTHY_MAJOR
+  ATO
+  TO
 }
 
 enum Squadron {
