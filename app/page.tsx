@@ -1,8 +1,10 @@
 ﻿"use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
-import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Filter, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, Megaphone, Menu, Plus, Search, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { Award, Bell, Bot, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, EyeOff, Filter, Fingerprint, HeartPulse, LayoutDashboard, LockKeyhole, LogOut, MapPin, Megaphone, Menu, Navigation, Plus, Search, ShieldCheck, Trash2, Truck, UserRound, Users, X } from "lucide-react";
+import "leaflet/dist/leaflet.css";
+import type { Map as LeafletMap, LayerGroup as LeafletLayerGroup } from "leaflet";
 
 type Role = "PERSONNEL" | "SDM" | "ADJT" | "WORTHY_MAJOR";
 type TableRow = Record<string, string>;
@@ -12,6 +14,8 @@ type Amendment = { fromDate: string; toDate: string; reportingDate: string; requ
 type Leave = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; type: "AL" | "CL"; from: string; to: string; reportingDate: string; status: string; requestedDays?: number; balanceAfter?: number; amendment?: Amendment | null; sdmApproved?: boolean; adjtApproved?: boolean };
 type TDY = { id: string; armyNo?: string; name?: string; rank?: string; squadron?: string; reason: string; location: string; from: string; to: string };
 type DailyOrder = { date: string; content: string; postedByName?: string; updatedAt?: string } | null;
+type VehicleJourney = { id: string; vehicleId: string; vehicleNumber?: string; vehicleType?: string; driverServiceNumber: string; driverName: string; driverRank: string; journeyType: "ONE_WAY" | "TWO_WAY"; origin: string; originLat?: number | null; originLng?: number | null; destination: string; destinationLat?: number | null; destinationLng?: number | null; turningPoint?: string | null; turningPointLat?: number | null; turningPointLng?: number | null; status: "ONGOING" | "COMPLETED"; startedAt: string; endedAt?: string | null };
+type Vehicle = { id: string; vehicleNumber: string; vehicleType: string; isActive: boolean; ongoingJourney: VehicleJourney | null };
 type Person = Account & { isActive: boolean };
 const API = process.env.NEXT_PUBLIC_API_URL ?? "";
 const api = (path: string) => `${API}${path}`;
@@ -292,9 +296,9 @@ function Workspace({ account, setAccount }: { account: Account; setAccount: (acc
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
   }, [account.role, account.serviceNumber, account.squadron, command]);
-  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }];
-  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", reports: "Make a list", orders: "Worthy Major's orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
-  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
+  const nav = command ? [{ id: "overview", text: "Overview", icon: LayoutDashboard }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: ClipboardList }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "reports", text: "Make a list", icon: Filter }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }, { id: "people", text: "All personnel", icon: Users }] : [{ id: "personal", text: "Personal details", icon: UserRound }, { id: "medical", text: "Medical details", icon: HeartPulse }, { id: "courses", text: "Courses & qualifications", icon: Award }, { id: "fitness", text: "CPT results", icon: ShieldCheck }, { id: "assistant", text: "AI assistant", icon: Bot }, { id: "leave", text: "Leave details", icon: CalendarDays }, { id: "tdy", text: "Temporary duty / course", icon: Briefcase }, { id: "vehicles", text: "Vehicle tracking", icon: Truck }, { id: "orders", text: "Worthy Major's orders", icon: Megaphone }];
+  const titles: Record<string, string> = { overview: "Command overview", assistant: "AI assistant", leave: command ? "Leave details" : "Leave details", tdy: "Temporary duty / course", vehicles: "Vehicle tracking", reports: "Make a list", orders: "Worthy Major's orders", people: "All personnel", personal: "Personal details", medical: "Medical details", courses: "Courses & qualifications", fitness: "CPT results" };
+  return <div className="min-h-screen bg-[#edf3ef] text-[#1c3e30]">{command && <PendingNotifications account={account} leave={leave} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} />}<aside className={`fixed inset-y-0 left-0 z-30 w-72 border-r border-[#d8e6dd] bg-[#f8fbf9] p-6 lg:translate-x-0 ${menu ? "translate-x-0" : "-translate-x-full"}`}><b className="tracking-[0.2em]">TRESATH<small className="block text-[10px] tracking-[0.3em] text-[#7c9b8b]">63 CAVALRY</small></b><p className="mt-12 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8aa296]">{account.role} workspace</p><nav className="mt-4 space-y-1">{nav.map((item) => <button key={item.id} onClick={() => { setView(item.id); setMenu(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold ${view === item.id ? "bg-[#dff1e5] text-[#1c684c]" : "text-[#6b8779]"}`}><item.icon size={17} />{item.text}</button>)}</nav></aside><div className="lg:pl-72"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9e5dd] bg-[#edf3ef]/90 px-5 py-4 backdrop-blur sm:px-8"><button onClick={() => setMenu(!menu)} className="p-2 lg:hidden" aria-label="Open menu"><Menu size={21} /></button><div className="flex items-center gap-3">{!(command && account.role === "ADJT") && <SquadronBadge squadron={account.squadron} size={34} showLabel={false} />}<div><p className="text-xs font-bold uppercase tracking-wider text-[#86a095]">{command && account.role === "ADJT" ? "All squadrons" : `${account.squadron} squadron`}</p><h1 className="mt-1 text-xl font-black text-[#214a38]">{titles[view]}</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{account.fullName}</p><p className="text-[11px] text-[#7d988b]">{account.rank} · {account.role}</p></div><button onClick={() => setAccount(null)} className="rounded-xl border border-[#d3e2d8] bg-white p-2.5 text-[#a44d49]" aria-label="Sign out"><LogOut size={17} /></button></div></header><main className="mx-auto max-w-7xl p-5 sm:p-8">{notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}{view !== "orders" && todayOrder?.content && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffd6a5] bg-[#fff9f0] p-4"><span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff1d9] text-[#a8762c]"><Megaphone size={16} /></span><div><p className="text-xs font-black uppercase tracking-wider text-[#a8762c]">Worthy Major&apos;s order · Today</p><p className="mt-1 whitespace-pre-line text-sm font-semibold text-[#5d4720]">{todayOrder.content}</p></div></div>}{["personal", "medical", "courses", "fitness"].includes(view) && <ProfileSections account={account} section={view} onSaved={(updated) => { setAccount(updated); setNotice("Profile details saved."); }} />}{view === "overview" && <Overview account={account} leave={leave} people={people} tdy={tdy} />}{view === "leave" && (command ? <LeaveBoard account={account} leave={leave} people={people} tdy={tdy} onUpdated={(updated) => setLeave((current) => current.map((item) => item.id === updated.id ? updated : item))} /> : <Availed account={account} leave={leave} onAdded={(record) => { setLeave((current) => [record, ...current]); setNotice(record.status === "Pending" ? "Leave request sent for approval." : "Availed leave saved."); }} />)}{view === "tdy" && (command ? <TdyBoard tdy={tdy} /> : <TdyForm account={account} tdy={tdy} onAdded={(record) => { setTdy((current) => [record, ...current]); setNotice("Temporary duty / course record saved."); }} />)}{view === "vehicles" && <VehicleTracking account={account} command={command} />}{view === "reports" && command && <ListBuilder account={account} people={people} leave={leave} tdy={tdy} />}{view === "orders" && <OrdersBoard account={account} />}{view === "people" && <People people={people} />}</main></div></div>;
 }
 
 type PendingNotice = { id: string; kind: "request" | "amendment"; leave: Leave };
@@ -728,6 +732,219 @@ function TdyBoard({ tdy }: { tdy: TDY[] }) {
   const [search, setSearch] = useState("");
   const filtered = tdy.filter((item) => `${item.name} ${item.armyNo} ${item.squadron}`.toLowerCase().includes(search.toLowerCase()));
   return <><Intro title="Temporary duty / course" detail="Personnel currently away from the squadron on temporary duty or a course, across your command." /><Panel title={`${filtered.length} temporary duty / course records`} icon={Briefcase}><label className="mb-5 flex max-w-sm items-center gap-2 rounded-xl border border-[#d8e3dc] px-3 py-2"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search personnel" className="w-full bg-transparent outline-none" /></label>{filtered.length ? filtered.map((item) => <div key={item.id} className="mb-3 flex flex-col gap-2 rounded-xl border border-[#e3ece6] p-4 sm:flex-row sm:items-center sm:justify-between"><div><b>{item.name ?? "Personnel name unavailable"} <small className="font-normal text-[#8aa095]">{item.armyNo}</small></b><p className="mt-1 text-xs text-[#789489]">{item.rank} · {item.squadron} · {item.reason}</p><p className="mt-1 text-xs font-semibold text-[#287052]">{item.location} · {item.from} to {item.to}</p></div></div>) : <Empty text="No temporary duty / course records found." />}</Panel></>;
+}
+
+function VehicleTracking({ account, command }: { account: Account; command: boolean }) {
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [newVehicle, setNewVehicle] = useState({ vehicleNumber: "", vehicleType: "" });
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [openVehicleId, setOpenVehicleId] = useState<string | null>(null);
+  const [journeyForm, setJourneyForm] = useState({ journeyType: "ONE_WAY" as "ONE_WAY" | "TWO_WAY", origin: "", destination: "", turningPoint: "" });
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const markersLayerRef = useRef<LeafletLayerGroup | null>(null);
+
+  async function load() {
+    try {
+      const response = await fetch(api("/api/vehicles"));
+      if (response.ok) setVehicles((await response.json()).vehicles ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => void load(), 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const leafletModule = await import("leaflet");
+      const L = leafletModule.default ?? leafletModule;
+      if (cancelled || !mapContainerRef.current) return;
+      if (!mapRef.current) {
+        delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+          iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+          shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        });
+        mapRef.current = L.map(mapContainerRef.current).setView([22.9734, 78.6569], 5);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 }).addTo(mapRef.current);
+        markersLayerRef.current = L.layerGroup().addTo(mapRef.current);
+      }
+      const map = mapRef.current;
+      const layer = markersLayerRef.current;
+      if (!map || !layer) return;
+      layer.clearLayers();
+      const bounds: [number, number][] = [];
+      for (const vehicle of vehicles) {
+        const journey = vehicle.ongoingJourney;
+        if (!journey) continue;
+        if (journey.originLat != null && journey.originLng != null) {
+          L.marker([journey.originLat, journey.originLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Start: ${journey.origin}<br/>Driver: ${journey.driverName}`);
+          bounds.push([journey.originLat, journey.originLng]);
+        }
+        if (journey.journeyType === "TWO_WAY") {
+          if (journey.turningPointLat != null && journey.turningPointLng != null) {
+            L.marker([journey.turningPointLat, journey.turningPointLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Turning point: ${journey.turningPoint}`);
+            bounds.push([journey.turningPointLat, journey.turningPointLng]);
+            if (journey.originLat != null && journey.originLng != null) {
+              L.polyline([[journey.originLat, journey.originLng], [journey.turningPointLat, journey.turningPointLng], [journey.originLat, journey.originLng]], { color: "#39835d", dashArray: "6 6" }).addTo(layer);
+            }
+          }
+        } else if (journey.destinationLat != null && journey.destinationLng != null) {
+          L.marker([journey.destinationLat, journey.destinationLng]).addTo(layer).bindPopup(`<b>${vehicle.vehicleNumber}</b><br/>Destination: ${journey.destination}`);
+          bounds.push([journey.destinationLat, journey.destinationLng]);
+          if (journey.originLat != null && journey.originLng != null) {
+            L.polyline([[journey.originLat, journey.originLng], [journey.destinationLat, journey.destinationLng]], { color: "#39835d" }).addTo(layer);
+          }
+        }
+      }
+      if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+    })();
+    return () => { cancelled = true; };
+  }, [vehicles]);
+
+  useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null; }, []);
+
+  async function addVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setAddingVehicle(true);
+    try {
+      const response = await fetch(api("/api/vehicles"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...newVehicle, actorRole: account.role }) });
+      const data = await response.json();
+      if (response.ok) { setNewVehicle({ vehicleNumber: "", vehicleType: "" }); setNotice("Vehicle added."); void load(); }
+      else setError(data.error || "Unable to add vehicle.");
+    } catch {
+      setError("Unable to connect to server.");
+    } finally {
+      setAddingVehicle(false);
+    }
+  }
+
+  async function removeVehicle(id: string) {
+    setBusyId(id);
+    setError("");
+    try {
+      const response = await fetch(api("/api/vehicles"), { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, actorRole: account.role }) });
+      const data = await response.json();
+      if (response.ok) void load();
+      else setError(data.error || "Unable to remove vehicle.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function startJourney(vehicleId: string) {
+    setBusyId(vehicleId);
+    setError("");
+    try {
+      const response = await fetch(api("/api/vehicle-journeys"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ vehicleId, serviceNumber: account.serviceNumber, ...journeyForm }) });
+      const data = await response.json();
+      if (response.ok) { setOpenVehicleId(null); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "" }); setNotice("Journey started."); void load(); }
+      else setError(data.error || "Unable to start journey.");
+    } catch {
+      setError("Unable to connect to server.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function endJourney(journeyId: string) {
+    setBusyId(journeyId);
+    setError("");
+    try {
+      const response = await fetch(api("/api/vehicle-journeys"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: journeyId, serviceNumber: account.serviceNumber, actorRole: account.role }) });
+      const data = await response.json();
+      if (response.ok) { setNotice("Journey ended. Vehicle is available again."); void load(); }
+      else setError(data.error || "Unable to end journey.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return <>
+    <Intro title="Vehicle tracking" detail="Unit vehicles, who is driving them, and where they are right now." />
+    {error && <p role="alert" className="mb-5 border-l-2 border-red-400 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
+    {notice && <p className="mb-5 rounded-xl border border-[#bde1c8] bg-[#e7f7eb] p-3 text-sm font-semibold text-[#2e7950]">{notice}</p>}
+    {command && (
+      <Panel title="Add vehicle" icon={Plus}>
+        <form onSubmit={addVehicle} className="grid gap-4 sm:grid-cols-3 sm:items-end">
+          <Field label="Vehicle number" value={newVehicle.vehicleNumber} onChange={(value) => setNewVehicle((current) => ({ ...current, vehicleNumber: value }))} />
+          <Field label="Vehicle type" value={newVehicle.vehicleType} onChange={(value) => setNewVehicle((current) => ({ ...current, vehicleType: value }))} />
+          <button disabled={addingVehicle} className="rounded-xl bg-[#1d6047] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{addingVehicle ? "Adding..." : "Add vehicle"}</button>
+        </form>
+      </Panel>
+    )}
+    <Panel title={`Unit vehicles · ${vehicles.length}`} icon={Truck}>
+      {loading ? <p className="text-sm text-[#789489]">Loading...</p> : vehicles.length ? (
+        <div className="space-y-3">
+          {vehicles.map((vehicle) => {
+            const journey = vehicle.ongoingJourney;
+            const canEnd = journey && (journey.driverServiceNumber === account.serviceNumber || command);
+            return (
+              <div key={vehicle.id} className="rounded-xl border border-[#e3ece6] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <b className="text-base">{vehicle.vehicleNumber}</b> <small className="font-normal text-[#8aa095]">{vehicle.vehicleType}</small>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {journey ? <span className="rounded-full bg-[#fff1d9] px-3 py-1.5 text-[11px] font-bold text-[#a8762c]">On journey</span> : <span className="rounded-full bg-[#e2f3e7] px-3 py-1.5 text-[11px] font-bold text-[#347c55]">Available</span>}
+                    {command && !journey && <button onClick={() => void removeVehicle(vehicle.id)} disabled={busyId === vehicle.id} className="rounded-lg bg-[#fae6e5] p-2 text-[#b45753]" aria-label="Remove vehicle"><Trash2 size={15} /></button>}
+                  </div>
+                </div>
+
+                {journey ? (
+                  <div className="mt-3 rounded-xl bg-[#fff9f0] p-3">
+                    <p className="text-sm font-bold text-[#5d4720]">{journey.driverName} <small className="font-normal text-[#8d6725]">{journey.driverRank} · {journey.driverServiceNumber}</small></p>
+                    <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-[#8d6725]"><Navigation size={12} />{journey.journeyType === "TWO_WAY" ? `${journey.origin} → ${journey.turningPoint} → ${journey.origin} (touch & back)` : `${journey.origin} → ${journey.destination}`}</p>
+                    <p className="mt-1 text-[11px] text-[#a8874a]">Started {new Date(journey.startedAt).toLocaleString()}</p>
+                    {canEnd && <button onClick={() => void endJourney(journey.id)} disabled={busyId === journey.id} className="mt-3 rounded-lg bg-[#1d6047] px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{busyId === journey.id ? "Ending..." : "End journey"}</button>}
+                  </div>
+                ) : openVehicleId === vehicle.id ? (
+                  <div className="mt-3 rounded-xl border border-[#d8e3dc] p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Select label="Journey type" value={journeyForm.journeyType === "TWO_WAY" ? "Two way (touch & back)" : "One way"} options={["One way", "Two way (touch & back)"]} onChange={(value) => setJourneyForm((current) => ({ ...current, journeyType: value.startsWith("Two") ? "TWO_WAY" : "ONE_WAY" }))} />
+                      <Field label="Start point" value={journeyForm.origin} onChange={(value) => setJourneyForm((current) => ({ ...current, origin: value }))} />
+                      {journeyForm.journeyType === "TWO_WAY" ? (
+                        <div className="sm:col-span-2">
+                          <Field label="Turning point" value={journeyForm.turningPoint} onChange={(value) => setJourneyForm((current) => ({ ...current, turningPoint: value }))} />
+                          <p className="mt-1 text-[11px] text-[#8aa095]">The vehicle will return to the start point after the turning point.</p>
+                        </div>
+                      ) : (
+                        <Field label="Destination" value={journeyForm.destination} onChange={(value) => setJourneyForm((current) => ({ ...current, destination: value }))} />
+                      )}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button onClick={() => void startJourney(vehicle.id)} disabled={busyId === vehicle.id} className="rounded-lg bg-[#1d6047] px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{busyId === vehicle.id ? "Starting..." : "Start journey"}</button>
+                      <button onClick={() => setOpenVehicleId(null)} className="rounded-lg border border-[#d8e3dc] px-4 py-2 text-xs font-bold text-[#5c7a6c]">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => { setOpenVehicleId(vehicle.id); setJourneyForm({ journeyType: "ONE_WAY", origin: "", destination: "", turningPoint: "" }); }} className="mt-3 rounded-lg border border-[#39835d] px-4 py-2 text-xs font-bold text-[#1d6047]">I have been told to drive this vehicle</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : <Empty text={command ? "No vehicles added yet. Use the form above to add one." : "No vehicles have been added for this unit yet."} />}
+    </Panel>
+    <div className="mt-6">
+      <Panel title="Live map" icon={MapPin}>
+        <p className="mb-4 text-xs text-[#8aa095]">Shows the start point, turning point / destination and route of every vehicle currently on a journey. A location only appears once it is recognized on the map.</p>
+        <div ref={mapContainerRef} className="h-96 w-full overflow-hidden rounded-xl border border-[#d8e5dc]" />
+      </Panel>
+    </div>
+  </>;
 }
 
 function Overview({ account, leave, people, tdy }: { account: Account; leave: Leave[]; people: Person[]; tdy: TDY[] }) {

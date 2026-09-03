@@ -129,6 +129,44 @@ model TemporaryDuty {
   @@index([toDate])
 }
 
+model Vehicle {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleNumber String   @unique
+  vehicleType   String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  journeys VehicleJourney[]
+
+  @@index([isActive])
+}
+
+model VehicleJourney {
+  id                  String    @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId           String    @db.ObjectId
+  vehicle             Vehicle   @relation(fields: [vehicleId], references: [id])
+  driverServiceNumber String
+  driverName          String
+  driverRank          String
+  journeyType         String    @default("ONE_WAY")
+  origin              String
+  originLat           Float?
+  originLng           Float?
+  destination         String
+  destinationLat      Float?
+  destinationLng      Float?
+  turningPoint        String?
+  turningPointLat     Float?
+  turningPointLng     Float?
+  status              String    @default("ONGOING")
+  startedAt           DateTime  @default(now())
+  endedAt             DateTime?
+
+  @@index([vehicleId])
+  @@index([status])
+}
+
 model DailyOrder {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   date         String   @unique
